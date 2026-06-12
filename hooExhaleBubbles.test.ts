@@ -40,7 +40,7 @@ test('createHooExhaleBubbleBurst creates bubbles from current exhale volume', ()
   equal(result.nextLastBurstAtMs, 1000);
   equal(result.shouldPlaySound, true);
   equal(result.nextLastSoundAtMs, 1000);
-  ok(result.soundVolume >= 0.78);
+  ok(result.soundVolume >= 0.55);
 });
 
 test('createHooExhaleBubbleBurst responds strongly to very soft blowing', () => {
@@ -59,7 +59,7 @@ test('createHooExhaleBubbleBurst responds strongly to very soft blowing', () => 
   equal(result.nextSeed, result.bubbles.length);
   equal(result.nextLastBurstAtMs, 1000);
   equal(result.shouldPlaySound, true);
-  ok(result.soundVolume >= 0.78);
+  ok(result.soundVolume >= 0.55);
 });
 
 test('createHooExhaleBubbleBurst does not create bubbles without measured exhale volume', () => {

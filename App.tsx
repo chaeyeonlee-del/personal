@@ -68,7 +68,15 @@ import {
   HOO_EXHALE_BUBBLE_BURST_INTERVAL_MS,
   createHooExhaleBubbleBurst,
 } from './hooExhaleBubbles';
+import {
+  HOO_BIG_BUBBLE_MAX_SIZE,
+  createInitialHooBigBubbleState,
+  isHooBigBubbleBreath,
+  tickHooBigBubble,
+  type HooBigBubbleState,
+} from './hooBigBubble';
 import { HOO_FIRST_EXHALE_DETECTION_THRESHOLD, getHooFirstExhaleGuideCopy } from './hooFirstExhaleGuide';
+import { pickRandomHooEncouragement } from './hooEncouragement';
 import {
   beginHooSession,
   createInitialHooFlowState,
@@ -244,9 +252,12 @@ const hooTextMetaBreath1 = require('./assets/5.ui element/hoo-text-meta-breath-1
 const hooCompleteButtons = require('./assets/5.ui element/hoo-complete-buttons.png');
 const hooBackChevron = require('./assets/5.ui element/hoo-back-chevron.png');
 const hooCountdownDropsSound = require('./assets/4.sound effect/hoo-countdown-drops.wav');
-const hooHydrophoneBubblesSound = require('./assets/4.sound effect/hoo-hydrophone-bubbles.mp3');
+// 짧은 보글보글 클립(약 1.4초, 끝에 페이드아웃). 원본 hoo-hydrophone-bubbles.mp3는 6.7초라
+// 매 트리거마다 길게 끌렸다 → 1-2초짜리로 잘라, 불기를 멈추면 곧 잦아들게 한다.
+const hooHydrophoneBubblesSound = require('./assets/4.sound effect/hoo-bubble-blip.mp3');
 const hooCompletionAchievementSound = require('./assets/4.sound effect/hoo-completion-achievement.mp3');
 const hooWaterAmbienceSound = require('./assets/4.sound effect/hoo-water-ambience.mp3');
+const hooBigBubblePopSound = require('./assets/4.sound effect/hoo-bubble-big.mp3');
 const ONBOARDING_SPLASH_FALLBACK_MS = 2200;
 const CHECK_INS_STORAGE_KEY = 'hoo.dailyCheckIns.v1';
 const SESSION_RECORDS_STORAGE_KEY = 'hoo.sessionRecords.v1';
@@ -1363,7 +1374,7 @@ async function playHooHydrophoneBubbles(
     }
 
     soundPoolIndexRef.current += 1;
-    await sound.setVolumeAsync(Math.max(0.68, Math.min(0.86, volume)));
+    await sound.setVolumeAsync(Math.max(0.48, Math.min(0.62, volume)));
     await sound.setPositionAsync(0);
     await sound.replayAsync();
   } catch {
@@ -1457,6 +1468,42 @@ async function playPreparedHooCompletionAchievement(soundRef: MutableRefObject<A
       void sound.unloadAsync().catch(() => {});
     }
     // Completion audio is decorative; the captured character should still appear.
+  }
+}
+
+async function prepareHooBigBubblePopSound({
+  shouldPlay = false,
+  volume = 0.9,
+}: {
+  shouldPlay?: boolean;
+  volume?: number;
+} = {}) {
+  const { sound } = await Audio.Sound.createAsync(hooBigBubblePopSound, {
+    shouldPlay,
+    volume,
+  });
+
+  return sound;
+}
+
+async function playPreparedHooBigBubblePop(soundRef: MutableRefObject<Audio.Sound | null>) {
+  try {
+    let sound = soundRef.current;
+    if (!sound) {
+      sound = await prepareHooBigBubblePopSound();
+      soundRef.current = sound;
+    }
+
+    await sound.setVolumeAsync(0.9);
+    await sound.setPositionAsync(0);
+    await sound.replayAsync();
+  } catch {
+    const sound = soundRef.current;
+    soundRef.current = null;
+    if (sound) {
+      void sound.unloadAsync().catch(() => {});
+    }
+    // The pop sound is celebratory polish; the visual pop is the real reward.
   }
 }
 
@@ -1627,6 +1674,11 @@ function HooApp({
   const [firstExhaleGuideElapsedMs, setFirstExhaleGuideElapsedMs] = useState(0);
   const [hasDetectedFirstExhale, setHasDetectedFirstExhale] = useState(false);
   const [floatingBubbles, setFloatingBubbles] = useState<HooBubble[]>([]);
+  // 완료 화면에서 캐릭터가 건네는 응원 한마디(세션 끝날 때마다 새로 뽑는다).
+  const [completionEncouragement, setCompletionEncouragement] = useState('');
+  // 2·4번째 호흡: 천천히 차오르는 큰 방울 하나(progress 0~1)와, 터질 때 잠깐 보이는 팝 잔상.
+  const [bigBubble, setBigBubble] = useState<{ progress: number; size: number } | null>(null);
+  const [bigBubblePops, setBigBubblePops] = useState<{ id: string; size: number }[]>([]);
   const [micNotice, setMicNotice] = useState<string | null>(null);
   const [isMicReady, setIsMicReady] = useState(false);
   const [isRequestingMicPermission, setIsRequestingMicPermission] = useState(false);
@@ -1650,6 +1702,12 @@ function HooApp({
   const completionAchievementSoundRef = useRef<Audio.Sound | null>(null);
   const sessionAmbienceRef = useRef<Audio.Sound | null>(null);
   const exhaleBubbleStateRef = useRef({ nextSeed: 0, lastBurstAtMs: 0, lastSoundAtMs: 0 });
+  const bigBubblePopSoundRef = useRef<Audio.Sound | null>(null);
+  const bigBubbleStateRef = useRef<{ state: HooBigBubbleState; lastTickAtMs: number }>({
+    state: createInitialHooBigBubbleState(),
+    lastTickAtMs: 0,
+  });
+  const bigBubblePopSeedRef = useRef(0);
   const finalCaptureAccumMsRef = useRef(0);
   const finalCaptureTickRef = useRef<number | null>(null);
   const hasRecordedCollectionCaptureRef = useRef(false);
@@ -1703,6 +1761,9 @@ function HooApp({
     volumeLevelRef.current = 0;
     setVolumeLevel(0);
     setFloatingBubbles([]);
+    setBigBubble(null);
+    setBigBubblePops([]);
+    bigBubbleStateRef.current = { state: createInitialHooBigBubbleState(), lastTickAtMs: 0 };
     exhaleBubbleStateRef.current = { nextSeed: 0, lastBurstAtMs: 0, lastSoundAtMs: 0 };
     lastDetectedExhaleAtRef.current = 0;
     heldExhaleVolumeRef.current = 0;
@@ -1841,6 +1902,40 @@ function HooApp({
 
   const emitHooBubblesFromVolume = useCallback((nextVolumeLevel: number) => {
     const bubbleContext = hooBubbleContextRef.current;
+
+    // 2·4번째 호흡: 작은 방울을 흩뿌리지 않고 큰 방울 하나를 천천히 키워 "펑" 터뜨린다.
+    if (isHooBigBubbleBreath(bubbleContext.breathIndex)) {
+      const now = Date.now();
+      const previous = bigBubbleStateRef.current;
+      const deltaMs = previous.lastTickAtMs > 0 ? Math.min(420, now - previous.lastTickAtMs) : 0;
+      const result = tickHooBigBubble({
+        isExhaleActive: bubbleContext.shouldListenToMic,
+        volumeLevel: nextVolumeLevel,
+        deltaMs,
+        state: previous.state,
+      });
+
+      bigBubbleStateRef.current = { state: result.state, lastTickAtMs: now };
+
+      if (result.justPopped) {
+        bigBubblePopSeedRef.current += 1;
+        const popId = `big-pop-${bubbleContext.breathIndex}-${bigBubblePopSeedRef.current}`;
+        const popSize = result.size;
+        setBigBubble(null);
+        setBigBubblePops((current) => [...current.slice(-3), { id: popId, size: popSize }]);
+        void playPreparedHooBigBubblePop(bigBubblePopSoundRef);
+        setTimeout(() => {
+          setBigBubblePops((current) => current.filter((pop) => pop.id !== popId));
+        }, HOO_BIG_BUBBLE_POP_DURATION_MS + 120);
+        return;
+      }
+
+      setBigBubble(
+        result.state.progress > 0.002 ? { progress: result.state.progress, size: result.size } : null,
+      );
+      return;
+    }
+
     const burst = createHooExhaleBubbleBurst({
       isExhaleActive: bubbleContext.shouldListenToMic,
       volumeLevel: nextVolumeLevel,
@@ -1951,6 +2046,22 @@ function HooApp({
     await prepareHooBubbleSoundPool(bubbleSoundPoolRef);
   }, []);
 
+  const prepareHooBigBubblePopSoundFromPress = useCallback(async () => {
+    if (bigBubblePopSoundRef.current) {
+      return;
+    }
+
+    try {
+      bigBubblePopSoundRef.current = await prepareHooBigBubblePopSound({ shouldPlay: false, volume: 0.9 });
+    } catch {
+      const sound = bigBubblePopSoundRef.current;
+      bigBubblePopSoundRef.current = null;
+      if (sound) {
+        void sound.unloadAsync().catch(() => {});
+      }
+    }
+  }, []);
+
   const prepareHooWaterAmbienceSoundFromPress = useCallback(async () => {
     if (sessionAmbienceRef.current) {
       return;
@@ -1971,6 +2082,7 @@ function HooApp({
   const requestMicPermissionFromPress = useCallback(async (): Promise<boolean> => {
     setIsRequestingMicPermission(true);
     void prepareHooBubbleSoundFromPress();
+    void prepareHooBigBubblePopSoundFromPress();
     void prepareHooWaterAmbienceSoundFromPress();
 
     try {
@@ -2023,7 +2135,12 @@ function HooApp({
     } finally {
       setIsRequestingMicPermission(false);
     }
-  }, [prepareHooBubbleSoundFromPress, prepareHooWaterAmbienceSoundFromPress, startWebMicMetering]);
+  }, [
+    prepareHooBubbleSoundFromPress,
+    prepareHooBigBubblePopSoundFromPress,
+    prepareHooWaterAmbienceSoundFromPress,
+    startWebMicMetering,
+  ]);
 
   useEffect(
     () => () => {
@@ -2038,6 +2155,11 @@ function HooApp({
       completionAchievementSoundRef.current = null;
       if (completionSound) {
         void completionSound.unloadAsync().catch(() => {});
+      }
+      const bigBubblePopSound = bigBubblePopSoundRef.current;
+      bigBubblePopSoundRef.current = null;
+      if (bigBubblePopSound) {
+        void bigBubblePopSound.unloadAsync().catch(() => {});
       }
       const ambienceSound = sessionAmbienceRef.current;
       sessionAmbienceRef.current = null;
@@ -2199,6 +2321,9 @@ function HooApp({
         lastBurstAtMs: 0,
         lastSoundAtMs: 0,
       };
+      // 날숨이 끝나면 다음 호흡을 위해 큰 방울 진행도를 처음부터 다시 시작한다.
+      bigBubbleStateRef.current = { state: createInitialHooBigBubbleState(), lastTickAtMs: 0 };
+      setBigBubble(null);
       return;
     }
 
@@ -2310,6 +2435,8 @@ function HooApp({
 
     hasPlayedCompletionAchievementForSessionRef.current = true;
     void playPreparedHooCompletionAchievement(completionAchievementSoundRef);
+    // 완료할 때마다 새 응원 한마디를 뽑는다(직전과 겹치지 않게).
+    setCompletionEncouragement((previous) => pickRandomHooEncouragement(previous));
   }, [flowState.screen]);
 
   useEffect(() => {
@@ -2438,6 +2565,10 @@ function HooApp({
                   ? null
                   : flowState.screen === 'failed'
                     ? '다시 천천히 불어볼까요?'
+                  : isFinalBreath && !isFinalCharacterCaptured
+                    ? flowState.breathPhase === 'exhale'
+                      ? '후— 불어서 캐릭터를 잡아봐요'
+                      : '캐릭터를 잡을 숨을 모아요'
                     : null
             }
             phaseRemainingSeconds={flowState.screen === 'breathing' ? phaseRemainingSeconds : null}
@@ -2461,6 +2592,11 @@ function HooApp({
                       : 'hidden'
             }
             floatingBubbles={flowState.screen === 'breathing' ? floatingBubbles : []}
+            bigBubble={flowState.screen === 'breathing' ? bigBubble : null}
+            bigBubblePops={flowState.screen === 'breathing' ? bigBubblePops : []}
+            micLevel={volumeLevel}
+            showMicLevel={shouldMeterMic}
+            encouragement={flowState.screen === 'complete' ? completionEncouragement : ''}
             captureIntensity={
               flowState.screen === 'complete'
                 ? 1
@@ -3147,6 +3283,11 @@ function HooSessionStage({
   characterSource,
   characterMode,
   floatingBubbles,
+  bigBubble,
+  bigBubblePops,
+  micLevel,
+  showMicLevel,
+  encouragement,
   captureIntensity,
   playWandEntrance,
   isCharacterFlying,
@@ -3172,6 +3313,11 @@ function HooSessionStage({
   characterSource: ImageSourcePropType;
   characterMode: 'hidden' | 'small' | 'capture' | 'large';
   floatingBubbles: HooBubble[];
+  bigBubble: { progress: number; size: number } | null;
+  bigBubblePops: { id: string; size: number }[];
+  micLevel: number;
+  showMicLevel: boolean;
+  encouragement: string;
   captureIntensity: number;
   playWandEntrance: boolean;
   isCharacterFlying: boolean;
@@ -3210,6 +3356,10 @@ function HooSessionStage({
   const wandWidth = wandBaseWidth * wandScale;
   const wandHeight = s(443, width) * wandScale;
   const wandLeft = x(44, width) + (wandBaseWidth - wandWidth) / 2;
+  // 큰 방울이 막대 윗쪽 링 구멍 한가운데에서 맺히도록(이미지 기준 가로 49.5%, 세로 29.6%).
+  // 막대와 동일하게 화면 '아래'를 기준으로 잡아 컨테이너 높이에 무관하게 정렬된다.
+  const wandRingCenterX = wandLeft + 0.495 * wandWidth;
+  const wandRingCenterBottom = sessionElementLayout.wandBottom + (1 - 0.296) * wandHeight;
   const visualBreathIndex = breathIndex;
   const wandEntrance = useRef(new Animated.Value(0)).current;
   const hasPlayedWandEntranceRef = useRef(false);
@@ -3692,7 +3842,28 @@ function HooSessionStage({
         {floatingBubbles.map((bubble) => (
           <HooFloatingBubble key={bubble.id} bubble={bubble} width={width} height={height} />
         ))}
+        {bigBubble ? (
+          <HooBigBubble
+            progress={bigBubble.progress}
+            size={bigBubble.size}
+            width={width}
+            centerX={wandRingCenterX}
+            centerBottom={wandRingCenterBottom}
+          />
+        ) : null}
+        {bigBubblePops.map((pop) => (
+          <HooBigBubblePop
+            key={pop.id}
+            size={pop.size}
+            width={width}
+            height={height}
+            centerX={wandRingCenterX}
+            centerBottom={wandRingCenterBottom}
+          />
+        ))}
       </View>
+
+      {showMicLevel && <HooMicLevelBar level={micLevel} width={width} />}
 
       {showInhaleFlow && (
         <View pointerEvents="none" style={hooStyles.inhaleFlowLayer}>
@@ -3825,6 +3996,27 @@ function HooSessionStage({
           </Text>
         ) : null}
       </Animated.View>
+
+      {characterMode === 'large' && encouragement ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            hooStyles.encouragementWrap,
+            hooCompletionEntranceStyle,
+            { top: y(312, height) - sessionElementLayout.copyLift, left: x(36, width), right: x(36, width) },
+          ]}
+        >
+          <View style={[hooStyles.encouragementBubble, { maxWidth: x(268, width) }]}>
+            <Text
+              style={[hooStyles.encouragementText, { fontSize: s(15, width), lineHeight: s(21, width) }]}
+              allowFontScaling={false}
+            >
+              {encouragement}
+            </Text>
+          </View>
+          <View style={hooStyles.encouragementTail} />
+        </Animated.View>
+      ) : null}
 
       {(displayedPhaseRemainingSeconds !== null || outgoingPhaseRemainingSeconds !== null) && characterMode !== 'large' && (
         <Animated.View
@@ -4049,6 +4241,171 @@ function HooFloatingBubble({ bubble, width, height }: { bubble: HooBubble; width
       <View style={hooStyles.floatingBubbleSpecularSmall} />
       <View style={hooStyles.floatingBubbleLowerRim} />
     </Animated.View>
+  );
+}
+
+// 2·4번째 호흡의 큰 방울 하나 — 마법봉 링 구멍 한가운데에서 차오르며(progress) 커진다.
+// 다 차면 부모가 이 컴포넌트를 내리고 HooBigBubblePop 잔상으로 바꿔 "펑" 터뜨린다.
+// 위치는 막대와 동일하게 화면 '아래'(centerBottom)를 기준으로 잡아 링에 정확히 맞춘다.
+function HooBigBubble({
+  progress,
+  size,
+  width,
+  centerX,
+  centerBottom,
+}: {
+  progress: number;
+  size: number;
+  width: number;
+  centerX: number;
+  centerBottom: number;
+}) {
+  const baseDiameter = s(HOO_BIG_BUBBLE_MAX_SIZE, width);
+  const targetScale = Math.max(0.16, size / HOO_BIG_BUBBLE_MAX_SIZE);
+  const scale = useRef(new Animated.Value(targetScale)).current;
+  const appear = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(appear, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [appear]);
+
+  useEffect(() => {
+    // 틱(약 260ms)마다 목표 크기로 보간하되, 틱 간격보다 길게(선형) 잡아 애니메이션이
+    // 끊기지 않고 다음 틱으로 자연스럽게 이어지도록 한다 → 단계적 점프 없는 부드러운 성장.
+    Animated.timing(scale, {
+      toValue: targetScale,
+      duration: 420,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    }).start();
+  }, [scale, targetScale]);
+
+  // 거의 다 찼을 때 살짝 더 밝아지며 "곧 터져요" 신호를 준다.
+  const readiness = Math.max(0, Math.min(1, (progress - 0.7) / 0.3));
+
+  return (
+    <Animated.View
+      style={[
+        hooStyles.floatingBubble,
+        {
+          width: baseDiameter,
+          height: baseDiameter,
+          left: centerX - baseDiameter / 2,
+          bottom: centerBottom - baseDiameter / 2,
+          opacity: appear,
+          transform: [{ scale }],
+        },
+      ]}
+    >
+      <View style={[hooStyles.floatingBubbleGlow, { opacity: 0.85 + readiness * 0.15 }]} />
+      <View style={hooStyles.floatingBubbleDepthCore} />
+      <Image source={hooBubbleSelected} style={hooStyles.floatingBubbleImage} resizeMode="contain" />
+      <View style={hooStyles.floatingBubbleSpecular} />
+      <View style={hooStyles.floatingBubbleSpecularSmall} />
+      <View style={hooStyles.floatingBubbleLowerRim} />
+    </Animated.View>
+  );
+}
+
+// 큰 방울이 터진 뒤 — 다 커진 비눗방울이 그 크기 그대로 링에서 떨어져, 슬로우모션처럼
+// 하늘 높이 둥실둥실 떠오르며 좌우로 살랑이다가, 꼭대기에서 부드럽게 부풀며 사라진다.
+const HOO_BIG_BUBBLE_POP_DURATION_MS = 2900;
+
+function HooBigBubblePop({
+  size,
+  width,
+  height,
+  centerX,
+  centerBottom,
+}: {
+  size: number;
+  width: number;
+  height: number;
+  centerX: number;
+  centerBottom: number;
+}) {
+  const bubbleSize = s(size, width);
+  // 화면 위쪽 하늘까지 높이 떠오른다.
+  const riseDistance = height * 0.62;
+  const swayAmount = s(24, width);
+  const rise = useRef(new Animated.Value(0)).current;
+  const sway = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    rise.setValue(0);
+    sway.setValue(0);
+    // 떠오름: 느리게(슬로우모션) 위로, 끝으로 갈수록 부력으로 살짝 감속.
+    Animated.timing(rise, {
+      toValue: 1,
+      duration: HOO_BIG_BUBBLE_POP_DURATION_MS,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+    // 살랑임: 좌우로 천천히 흔들리며 떠다니는 느낌(둥둥).
+    Animated.loop(
+      Animated.timing(sway, {
+        toValue: 1,
+        duration: 2100,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ).start();
+  }, [rise, sway]);
+
+  const translateY = rise.interpolate({ inputRange: [0, 1], outputRange: [0, -riseDistance] });
+  // 좌우 살랑임(삼각파를 부드럽게).
+  const translateX = sway.interpolate({ inputRange: [0, 0.5, 1], outputRange: [-swayAmount, swayAmount, -swayAmount] });
+  // 떠다니는 동안 미세하게 출렁이는 비눗방울 표면.
+  const wobble = sway.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [1, 1.03, 1, 0.975, 1] });
+  // 끝(꼭대기)에서만 살짝 부풀며 톡.
+  const burst = rise.interpolate({ inputRange: [0, 0.9, 1], outputRange: [1, 1, 1.18] });
+  const scale = Animated.multiply(wobble, burst);
+  // 천천히 떠오르다가 위쪽에서 서서히 사라진다.
+  const opacity = rise.interpolate({ inputRange: [0, 0.7, 0.92, 1], outputRange: [0.95, 0.9, 0.5, 0] });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        hooStyles.floatingBubble,
+        {
+          width: bubbleSize,
+          height: bubbleSize,
+          left: centerX - bubbleSize / 2,
+          bottom: centerBottom - bubbleSize / 2,
+          opacity,
+          transform: [{ translateX }, { translateY }, { scale }],
+        },
+      ]}
+    >
+      <View style={hooStyles.floatingBubbleGlow} />
+      <View style={hooStyles.floatingBubbleDepthCore} />
+      <Image source={hooBubbleSelected} style={hooStyles.floatingBubbleImage} resizeMode="contain" />
+      <View style={hooStyles.floatingBubbleSpecular} />
+      <View style={hooStyles.floatingBubbleSpecularSmall} />
+    </Animated.View>
+  );
+}
+
+// 오른쪽 하단의 옅은 세로 바 — 마이크가 실제로 숨을 잡고 있는지 살짝만 보여준다(과하지 않게).
+function HooMicLevelBar({ level, width }: { level: number; width: number }) {
+  const trackHeight = s(168, width);
+  const clamped = Math.max(0, Math.min(1, level));
+  // 약한 입력도 분명히 보이도록 살짝 들어올리되, 무입력(0)일 땐 비워 둔다.
+  const fillHeight = clamped <= 0 ? 0 : trackHeight * Math.max(0.08, clamped);
+
+  return (
+    <View
+      pointerEvents="none"
+      style={[hooStyles.micLevelTrack, { width: s(10, width), height: trackHeight, right: s(18, width), bottom: s(128, width) }]}
+    >
+      <View style={[hooStyles.micLevelFill, { height: fillHeight }]} />
+    </View>
   );
 }
 
@@ -6800,6 +7157,39 @@ const hooStyles = StyleSheet.create({
     fontWeight: '400',
     textAlign: 'center',
   },
+  encouragementWrap: {
+    position: 'absolute',
+    zIndex: 12,
+    alignItems: 'center',
+  },
+  encouragementBubble: {
+    paddingHorizontal: 17,
+    paddingVertical: 11,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.74)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.6)',
+    shadowColor: '#5C8AA8',
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+  },
+  encouragementText: {
+    color: '#396073',
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  encouragementTail: {
+    width: 0,
+    height: 0,
+    marginTop: -1,
+    borderLeftWidth: 9,
+    borderRightWidth: 9,
+    borderTopWidth: 12,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: 'rgba(255, 255, 255, 0.74)',
+  },
   hooWand: {
     position: 'absolute',
     zIndex: 6,
@@ -7180,6 +7570,19 @@ const hooStyles = StyleSheet.create({
   floatingBubbleLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 9,
+  },
+  micLevelTrack: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+    zIndex: 11,
+  },
+  micLevelFill: {
+    width: '100%',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
   },
   floatingBubble: {
     position: 'absolute',

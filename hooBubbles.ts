@@ -54,12 +54,14 @@ export function normalizeHooWebAmplitude(amplitude: number | null | undefined) {
     return 0;
   }
 
-  const noiseFloor = 0.0038;
+  // 방 안 잔잔한 소음(팬·키보드·말소리 잔향)은 입김이 아니므로 0으로 끊는다.
+  // 바닥값을 충분히 올려, 실제로 "후—" 불 때(보통 0.02 이상)만 방울·소리가 나오게 한다.
+  const noiseFloor = 0.015;
   if (amplitude <= noiseFloor) {
     return 0;
   }
 
-  return Math.pow(clamp((amplitude - noiseFloor) / 0.01, 0, 1), 0.42);
+  return Math.pow(clamp((amplitude - noiseFloor) / 0.05, 0, 1), 0.5);
 }
 
 export function getHooBubbleBurstCount({ phase, volumeLevel, breathIndex }: HooBubbleBurstInput) {

@@ -17,14 +17,17 @@ test('normalizeHooMetering converts loud native metering close to one', () => {
   ok(normalizeHooMetering(-4) > 0.9);
 });
 
-test('normalizeHooWebAmplitude treats quiet browser mic input as silence', () => {
+test('normalizeHooWebAmplitude keeps idle room noise silent on web', () => {
   equal(normalizeHooWebAmplitude(0.0037), 0);
+  // 입김이 아닌 잔잔한 방 소음(바닥값 이하)은 소리·방울이 나지 않아야 한다.
+  equal(normalizeHooWebAmplitude(0.01), 0);
+  equal(normalizeHooWebAmplitude(0.015), 0);
 });
 
-test('normalizeHooWebAmplitude makes gentle blowing visible on web', () => {
-  ok(normalizeHooWebAmplitude(0.0041) > HOO_BLOW_VOLUME_THRESHOLD);
-  ok(normalizeHooWebAmplitude(0.006) > 0.2);
-  ok(normalizeHooWebAmplitude(0.012) > 0.55);
+test('normalizeHooWebAmplitude makes real blowing visible on web', () => {
+  ok(normalizeHooWebAmplitude(0.02) > HOO_BLOW_VOLUME_THRESHOLD);
+  ok(normalizeHooWebAmplitude(0.04) > 0.4);
+  ok(normalizeHooWebAmplitude(0.08) > 0.9);
 });
 
 test('getHooBubbleBurstCount creates no bubbles while inhaling', () => {

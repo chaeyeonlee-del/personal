@@ -25,7 +25,7 @@ test('hoo interactions keep screen transitions quiet and use local bubble audio'
   equal(appSource.includes('HOO_TRANSITION_SPRING'), false);
   equal(appSource.includes('sceneSpring'), false);
   equal(appSource.includes('springScene'), false);
-  equal(appSource.includes("require('./assets/4.sound effect/hoo-hydrophone-bubbles.mp3')"), true);
+  equal(appSource.includes("require('./assets/4.sound effect/hoo-bubble-blip.mp3')"), true);
   equal(appSource.includes('hoo-bubble-pop.wav'), false);
   equal(appSource.includes('playHooHydrophoneBubbles'), true);
   equal(appSource.includes('prepareHooBubbleSound'), true);
@@ -35,7 +35,7 @@ test('hoo interactions keep screen transitions quiet and use local bubble audio'
   equal(appSource.includes('if (burst.shouldPlaySound) {'), true);
   equal(appSource.includes('playHooHydrophoneBubbles(bubbleSoundPoolRef, bubbleSoundPoolIndexRef, burst.soundVolume)'), true);
   equal(appSource.includes('await sound.replayAsync();'), true);
-  equal(appSource.includes('await sound.setVolumeAsync(Math.max(0.68, Math.min(0.86, volume)))'), true);
+  equal(appSource.includes('await sound.setVolumeAsync(Math.max(0.48, Math.min(0.62, volume)))'), true);
   equal(appSource.includes('lastBubbleSoundAtRef'), false);
   equal(appSource.includes('await sound.setVolumeAsync(0.16);'), true);
 });

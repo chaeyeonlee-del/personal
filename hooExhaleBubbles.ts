@@ -6,7 +6,9 @@ import {
 } from './hooBubbles.ts';
 
 export const HOO_EXHALE_BUBBLE_BURST_INTERVAL_MS = 260;
-export const HOO_EXHALE_BUBBLE_SOUND_INTERVAL_MS = 560;
+// 보글보글 클립(약 1.4초) 길이에 맞춰, 거의 이어지되 겹쳐 쌓이지 않도록 한다.
+// 불기를 멈추면 재생 중이던 클립만 페이드아웃하며 끝나(≤1.4초) 길게 끌리지 않는다.
+export const HOO_EXHALE_BUBBLE_SOUND_INTERVAL_MS = 1250;
 
 export type HooExhaleBubbleBurstInput = {
   isExhaleActive: boolean;
@@ -81,6 +83,6 @@ export function createHooExhaleBubbleBurst(input: HooExhaleBubbleBurstInput): Ho
     nextLastBurstAtMs: input.nowMs,
     nextLastSoundAtMs: shouldPlaySound ? input.nowMs : input.lastSoundAtMs,
     shouldPlaySound,
-    soundVolume: shouldPlaySound ? Math.min(0.86, 0.78 + volumeLevel * 0.08) : 0,
+    soundVolume: shouldPlaySound ? Math.min(0.62, 0.56 + volumeLevel * 0.06) : 0,
   };
 }
