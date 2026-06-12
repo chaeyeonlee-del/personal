@@ -1375,6 +1375,17 @@ async function playHooHydrophoneBubbles(
   }
 }
 
+function stopHooBubbleSounds(soundPoolRef: MutableRefObject<Audio.Sound[]>) {
+  soundPoolRef.current.forEach((sound) => {
+    void sound.stopAsync()
+      .catch(() => sound.pauseAsync())
+      .catch(() => {})
+      .finally(() => {
+        void sound.setPositionAsync(0).catch(() => {});
+      });
+  });
+}
+
 async function playHooCountdownDrops() {
   try {
     const { sound } = await Audio.Sound.createAsync(hooCountdownDropsSound, {
@@ -2173,6 +2184,7 @@ function HooApp({
 
   useEffect(() => {
     if (!shouldListenToMic) {
+      stopHooBubbleSounds(bubbleSoundPoolRef);
       setVolumeLevel(0);
       lastDetectedExhaleAtRef.current = 0;
       heldExhaleVolumeRef.current = 0;
@@ -2189,7 +2201,10 @@ function HooApp({
       emitHooBubblesFromVolume(canUseHeldExhaleVolume ? heldExhaleVolumeRef.current : volumeLevelRef.current);
     }, HOO_EXHALE_BUBBLE_BURST_INTERVAL_MS);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      stopHooBubbleSounds(bubbleSoundPoolRef);
+    };
   }, [emitHooBubblesFromVolume, shouldListenToMic]);
 
   useEffect(

@@ -77,6 +77,32 @@ test('hoo session prepares water ambience from the guide press without triggerin
   equal(ambienceEffectSource.includes('await sound.setVolumeAsync(0.16);'), true);
 });
 
+test('hoo water ambience becomes audible only after the prepare countdown', () => {
+  const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
+  const prepareCountdownSource = appSource.slice(
+    appSource.indexOf("if (flowState.screen !== 'prepare' || !hasOpenedMicGate)"),
+    appSource.indexOf('const completeBreathingPhase', appSource.indexOf("if (flowState.screen !== 'prepare' || !hasOpenedMicGate)")),
+  );
+  const ambienceActiveSource = appSource.slice(
+    appSource.indexOf('const isHooSessionActive ='),
+    appSource.indexOf('function clearCollectionCaptureSheetDelay'),
+  );
+  const ambienceEffectSource = appSource.slice(
+    appSource.indexOf('useEffect(() => {\n    if (!isHooSessionActive)'),
+    appSource.indexOf('const hooBubbleContextRef = useRef', appSource.indexOf('useEffect(() => {\n    if (!isHooSessionActive)')),
+  );
+  const waterPressSource = appSource.slice(
+    appSource.indexOf('const prepareHooWaterAmbienceSoundFromPress = useCallback'),
+    appSource.indexOf('const requestMicPermissionFromPress = useCallback'),
+  );
+
+  equal(prepareCountdownSource.includes('void playHooCountdownDrops();'), true);
+  equal(prepareCountdownSource.includes('await sound.setVolumeAsync(0.16);'), false);
+  equal(ambienceActiveSource.includes("flowState.screen === 'prepare'"), false);
+  equal(ambienceEffectSource.includes('await sound.setVolumeAsync(0.16);'), true);
+  equal(waterPressSource.includes('prepareHooWaterAmbienceSound({ shouldPlay: true, volume: 0 })'), true);
+});
+
 test('hoo onboarding shows the full-screen onboarding image immediately', () => {
   const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
   const hooAppSource = appSource.slice(appSource.indexOf('function HooApp('), appSource.indexOf('// 화면이 마운트될 때'));
@@ -625,6 +651,18 @@ test('hoo uses one exhale feedback clock and plays bubble audio for every visibl
   equal(appSource.includes('async function prepareHooBubbleSoundPool'), true);
   equal(appSource.includes('playHooHydrophoneBubbles(bubbleSoundPoolRef, bubbleSoundPoolIndexRef, burst.soundVolume)'), true);
   equal(emitSource.includes('now - lastBubbleSoundAtRef.current'), false);
+});
+
+test('hoo stops bubble audio as soon as exhale listening ends', () => {
+  const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
+  const exhaleIntervalSource = appSource.slice(
+    appSource.indexOf("if (!shouldListenToMic) {"),
+    appSource.indexOf('useEffect(', appSource.indexOf("if (!shouldListenToMic) {") + 1),
+  );
+
+  equal(appSource.includes('function stopHooBubbleSounds'), true);
+  equal(exhaleIntervalSource.includes('stopHooBubbleSounds(bubbleSoundPoolRef);'), true);
+  equal(exhaleIntervalSource.includes('return () => {\n      clearInterval(interval);\n      stopHooBubbleSounds(bubbleSoundPoolRef);\n    };'), true);
 });
 
 test('hoo first exhale guides users with gentle live feedback only once', () => {
