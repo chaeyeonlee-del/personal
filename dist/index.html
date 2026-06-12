@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HOO iPhone Mockup</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --device-width: 390px;
+        --device-height: 844px;
+        --shell-padding: 12px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background: #ffffff;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .mockup-stage {
+        display: grid;
+        place-items: center;
+        width: 100vw;
+        height: 100vh;
+        padding: 18px;
+        background: #ffffff;
+      }
+
+      .iphone-shell {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: calc(var(--device-width) + var(--shell-padding) * 2);
+        height: calc(var(--device-height) + var(--shell-padding) * 2);
+        max-width: calc(100vw - 36px);
+        max-height: calc(100vh - 36px);
+        aspect-ratio: 414 / 868;
+        padding: var(--shell-padding);
+        overflow: hidden;
+        border: 1px solid #202124;
+        border-radius: 48px;
+        background: #101114;
+        box-shadow: 0 28px 42px rgba(18, 20, 23, 0.2);
+      }
+
+      .iphone-speaker {
+        position: absolute;
+        top: 10px;
+        left: 50%;
+        z-index: 2;
+        width: 70px;
+        height: 6px;
+        border-radius: 999px;
+        background: #26282c;
+        transform: translateX(-50%);
+      }
+
+      .phone-screen {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        border: 0;
+        border-radius: 36px;
+        background: #ffffff;
+      }
+
+      .deployment-frame {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #ffffff;
+      }
+
+      @media (max-height: 900px), (max-width: 450px) {
+        .iphone-shell {
+          width: min(calc(100vw - 36px), calc((100vh - 36px) * 414 / 868));
+          height: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="mockup-stage">
+      <section class="iphone-shell" aria-label="iPhone mockup">
+        <div class="iphone-speaker" aria-hidden="true"></div>
+        <div class="phone-screen">
+          <iframe
+            class="deployment-frame"
+            title="HOO deployed app"
+            src="https://hoo-standalone-rebuild.vercel.app"
+            allow="autoplay; fullscreen; microphone; clipboard-write"
+            referrerpolicy="no-referrer-when-downgrade"
+          ></iframe>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

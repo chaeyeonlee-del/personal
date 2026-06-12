@@ -836,7 +836,21 @@ export default function App() {
     screenWidth: windowSize.width,
     screenHeight: windowSize.height,
   });
-  const { width, height, isFramed } = layout;
+  const webMockupScale = Platform.OS === 'web'
+    ? Math.min(
+      1,
+      Math.max(
+        0.62,
+        Math.min(
+          (windowSize.width - 36) / (FIGMA_WIDTH + 24),
+          (windowSize.height - 36) / (FIGMA_HEIGHT + 24),
+        ),
+      ),
+    )
+    : 1;
+  const width = Platform.OS === 'web' ? Math.round(FIGMA_WIDTH * webMockupScale) : layout.width;
+  const height = Platform.OS === 'web' ? Math.round(FIGMA_HEIGHT * webMockupScale) : layout.height;
+  const isFramed = Platform.OS === 'web' ? true : layout.isFramed;
 
   return (
     <HooApp
@@ -1653,6 +1667,47 @@ function HooIdleFloat({
     >
       {children}
     </Animated.View>
+  );
+}
+
+function HooPhoneMockup({
+  active,
+  width,
+  height,
+  children,
+}: {
+  active: boolean;
+  width: number;
+  height: number;
+  children: ReactNode;
+}) {
+  if (!active) {
+    return <>{children}</>;
+  }
+
+  return (
+    <View
+      style={[
+        hooStyles.iphoneShell,
+        {
+          width: width + 24,
+          height: height + 24,
+          borderRadius: Math.max(38, s(48, width)),
+        },
+      ]}
+    >
+      <View
+        pointerEvents="none"
+        style={[
+          hooStyles.iphoneSpeaker,
+          {
+            top: Math.max(10, y(10, height)),
+            width: Math.max(52, s(70, width)),
+          },
+        ]}
+      />
+      {children}
+    </View>
   );
 }
 
@@ -2506,33 +2561,38 @@ function HooApp({
     buttonHeight: y(56, height),
   });
   const shouldUseStaticSessionBackground = flowState.screen === 'complete';
+  const isWebMockup = Platform.OS === 'web' && isFramed;
 
   return (
-    <View style={[hooStyles.root, { overflow: 'hidden' }]}>
+    <View style={[hooStyles.root, isWebMockup && hooStyles.webMockupRoot, { overflow: 'hidden' }]}>
       {/* 데스크톱 프레임 밖은 단순 배경만 두고, 세션 영상은 휴대폰 화면 안에서만 렌더링한다. */}
-      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        <LinearGradient colors={['#A4D6EF', '#BFE6F3', '#D6EFF6']} style={StyleSheet.absoluteFill} />
-        {!shouldUseStaticSessionBackground && !isFramed && isHooSessionScreen && (
-          <Video
-            source={hooSessionBackgroundVideo}
-            style={StyleSheet.absoluteFill}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay
-            isLooping
-            isMuted
-            usePoster
-            posterSource={hooSessionBackgroundPoster}
-            posterStyle={StyleSheet.absoluteFill}
-          />
-        )}
-      </View>
+      {!isWebMockup && (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <LinearGradient colors={['#A4D6EF', '#BFE6F3', '#D6EFF6']} style={StyleSheet.absoluteFill} />
+          {!shouldUseStaticSessionBackground && !isFramed && isHooSessionScreen && (
+            <Video
+              source={hooSessionBackgroundVideo}
+              style={StyleSheet.absoluteFill}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay
+              isLooping
+              isMuted
+              usePoster
+              posterSource={hooSessionBackgroundPoster}
+              posterStyle={StyleSheet.absoluteFill}
+            />
+          )}
+        </View>
+      )}
       <StatusBar style="light" />
-      <View
-        style={[
-          isFramed ? hooStyles.appFrameLayer : hooStyles.appLayer,
-          isFramed ? { width, height } : null,
-        ]}
-      >
+      <HooPhoneMockup active={isWebMockup} width={width} height={height}>
+        <View
+          style={[
+            isFramed ? hooStyles.appFrameLayer : hooStyles.appLayer,
+            isWebMockup && hooStyles.webMockupScreen,
+            isFramed ? { width, height } : null,
+          ]}
+        >
         {flowState.screen === 'onboarding' && (
           <HooScreenFade>
             <HooAutoAdvanceOnboardingSplash onStart={beginSession} />
@@ -2740,7 +2800,8 @@ function HooApp({
             onClose={backToOnboarding}
           />
         )}
-      </View>
+        </View>
+      </HooPhoneMockup>
     </View>
   );
 }
@@ -6795,6 +6856,33 @@ const hooStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#EAF2F7',
+  },
+  webMockupRoot: {
+    backgroundColor: '#FFFFFF',
+  },
+  iphoneShell: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#101114',
+    borderColor: '#202124',
+    borderWidth: 1,
+    shadowColor: '#121417',
+    shadowOffset: { width: 0, height: 24 },
+    shadowOpacity: 0.18,
+    shadowRadius: 38,
+    elevation: 12,
+    ...(Platform.OS === 'web' ? ({ filter: 'drop-shadow(0 28px 42px rgba(18, 20, 23, 0.20))' } as any) : null),
+  },
+  iphoneSpeaker: {
+    position: 'absolute',
+    zIndex: 40,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#26282C',
+  },
+  webMockupScreen: {
+    borderRadius: 36,
   },
   appLayer: {
     ...StyleSheet.absoluteFillObject,
