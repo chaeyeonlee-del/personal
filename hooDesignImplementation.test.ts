@@ -141,6 +141,10 @@ test('hoo breathing stage renders a visible phase countdown and wand entrance', 
 
   equal(appSource.includes('phaseRemainingSeconds'), true);
   equal(appSource.includes('phaseTimerText'), true);
+  equal(appSource.includes('breathPhase={flowState.breathPhase}'), true);
+  equal(appSource.includes('phaseTimerTextInhale'), true);
+  equal(appSource.includes('phaseTimerTextExhale'), true);
+  equal(appSource.includes("breathPhase === 'inhale' ? hooStyles.phaseTimerTextInhale : hooStyles.phaseTimerTextExhale"), true);
   equal(appSource.includes('getHooPhaseAdvanceDelayMs'), true);
   equal(appSource.includes('wandEntrance'), true);
   equal(appSource.includes('hasPlayedWandEntranceRef'), true);

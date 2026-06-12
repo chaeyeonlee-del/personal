@@ -77,6 +77,7 @@ import {
   progressHooFlow,
   restartHooBreathing,
   startHooBreathing,
+  type HooBreathPhase,
   type HooFlowState,
   type HooMood,
 } from './hooFlow';
@@ -2446,6 +2447,7 @@ function HooApp({
                     : null
             }
             phaseRemainingSeconds={flowState.screen === 'breathing' ? phaseRemainingSeconds : null}
+            breathPhase={flowState.breathPhase}
             shouldUseStaticBackground={shouldUseStaticSessionBackground}
             showInhaleFlow={flowState.screen === 'breathing' && flowState.breathPhase === 'inhale'}
             characterSource={getHooCollectionImageSource(selectedHooCollectionCharacter.imageKey)}
@@ -3091,6 +3093,7 @@ function HooSessionStage({
   titleStyle,
   subtitle,
   phaseRemainingSeconds = null,
+  breathPhase,
   shouldUseStaticBackground,
   showInhaleFlow,
   characterSource,
@@ -3115,6 +3118,7 @@ function HooSessionStage({
   titleStyle: 'countdown' | 'instruction';
   subtitle: string | null;
   phaseRemainingSeconds?: number | null;
+  breathPhase: HooBreathPhase;
   shouldUseStaticBackground: boolean;
   showInhaleFlow: boolean;
   characterSource: ImageSourcePropType;
@@ -3175,6 +3179,7 @@ function HooSessionStage({
   const [outgoingPhaseRemainingSeconds, setOutgoingPhaseRemainingSeconds] = useState<number | null>(null);
   const currentCopyRef = useRef<HooSessionCopySnapshot>(displayedCopy);
   const phaseTimerValueRef = useRef<number | null>(phaseRemainingSeconds);
+  const phaseTimerToneStyle = breathPhase === 'inhale' ? hooStyles.phaseTimerTextInhale : hooStyles.phaseTimerTextExhale;
   const inhaleAirParticles = useMemo(
     () => [
       { id: 'left-high', left: 114, top: 472, toX: 68, toY: 34, size: 5, opacity: 0.22 },
@@ -3793,6 +3798,7 @@ function HooSessionStage({
             <Animated.Text
               style={[
                 hooStyles.phaseTimerText,
+                phaseTimerToneStyle,
                 hooStyles.phaseTimerTextLayer,
                 hooPhaseTimerOutgoingTextStyle,
                 {
@@ -3809,6 +3815,7 @@ function HooSessionStage({
             <Animated.Text
               style={[
                 hooStyles.phaseTimerText,
+                phaseTimerToneStyle,
                 hooStyles.phaseTimerTextLayer,
                 hooPhaseTimerIncomingTextStyle,
                 {
@@ -6705,10 +6712,15 @@ const hooStyles = StyleSheet.create({
     borderColor: 'transparent',
   },
   phaseTimerText: {
-    color: '#2D7FA1',
     fontWeight: '800',
     textAlign: 'center',
     letterSpacing: 0,
+  },
+  phaseTimerTextInhale: {
+    color: '#6EAFC6',
+  },
+  phaseTimerTextExhale: {
+    color: '#2F86C7',
   },
   phaseTimerTextLayer: {
     position: 'absolute',
