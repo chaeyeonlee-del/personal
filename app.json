@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "HOO",
+    "slug": "hoo",
+    "scheme": "hoo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/1.branding/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/1.branding/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "bundleIdentifier": "com.ichaeyeon.hoo",
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "숨을 내쉴 때 비눗방울 효과를 만들기 위해 마이크 볼륨만 기기 안에서 실시간으로 사용합니다. 녹음 파일은 보관하거나 서버로 전송하지 않습니다."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/1.branding/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/1.branding/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "ee804180-f926-4163-892e-cb4ef99bb1f9"
+      }
+    },
+    "owner": "chaeyeonleee"
+  }
+}
