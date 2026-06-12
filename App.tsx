@@ -3041,7 +3041,9 @@ function HooCollectionScreen({
   const progressWidth = `${Math.round((summary.capturedCount / summary.totalCount) * 100)}%` as ViewStyle['width'];
   const gridPadding = x(22, width);
   const gridGap = x(16, width);
-  const cardSize = (width - gridPadding * 2 - gridGap * 2) / 3;
+  // 3장 + 간격 2개의 합이 콘텐츠 폭과 '정확히' 같으면, 소수점 반올림 탓에 3번째 카드가
+  // 다음 줄로 밀려 2단이 돼버린다. 정수로 내림하고 2px 여유를 둬 모든 폰에서 3단을 보장한다.
+  const cardSize = Math.floor((width - gridPadding * 2 - gridGap * 2 - 2) / 3);
 
   return (
     <LinearGradient
