@@ -73,9 +73,9 @@ export function getHooBubbleBurstCount({ phase, volumeLevel, breathIndex }: HooB
   }
 
   const activeVolume = (normalizedVolume - HOO_BLOW_VOLUME_THRESHOLD) / (1 - HOO_BLOW_VOLUME_THRESHOLD);
-  const finalBreathBonus = isHooFinalBreath(breathIndex) ? 3 : 0;
+  const finalBreathBonus = isHooFinalBreath(breathIndex) ? 2 : 0;
 
-  return 7 + Math.floor(activeVolume * 14) + finalBreathBonus;
+  return 3 + Math.floor(activeVolume * 6) + finalBreathBonus;
 }
 
 export function createHooBubble({ seed, volumeLevel, breathIndex }: HooBubbleInput): HooBubble {
@@ -94,16 +94,14 @@ export function createHooBubble({ seed, volumeLevel, breathIndex }: HooBubbleInp
 
   return {
     id: `bubble-${breathIndex}-${seed}`,
-    // 마법봉 링(조준점, x≈52%) 중심에 좁게 모여 태어난 뒤, driftX로 올라가며 부채처럼 퍼진다.
-    left: clamp(52 + (sideJitter - 0.5) * 10, 46, 58),
-    // 막대 중간 링 근처에서 출발해 손잡이 아래쪽에서 와다다 생기는 느낌을 줄인다.
-    top: clamp(58.5 - liftJitter * 4.5, 54, 59),
+    // 마법봉 링 근처에서 태어나되 시작점과 타이밍을 넓혀 한 덩어리로 뭉쳐 보이지 않게 한다.
+    left: clamp(52 + (sideJitter - 0.5) * 18, 43, 61),
+    top: clamp(60 - liftJitter * 8, 52, 60),
     size: clamp(baseSize + finalBreathBonus, 16, 86),
     // 상승하면서 좌우로 벌어지는 폭(부채꼴 확산)을 더 키워 "가운데에서 위로 퍼지는" 느낌 강화.
-    driftX: direction * (58 + sideJitter * 78),
+    driftX: direction * (62 + sideJitter * 94),
     durationMs: 2700 + HOO_BUBBLE_RISE_EXTRA_MS + Math.round(liftJitter * 1300),
-    // 같은 burst라도 방울마다 시작 시점을 0~240ms 흩어서 "또르르" 흘러나오게(뭉침 방지).
-    delayMs: Math.round(staggerJitter * 320),
+    delayMs: Math.round(staggerJitter * 680),
     opacity: 0.38 + normalizedVolume * 0.22 + clusterJitter * 0.08,
   };
 }

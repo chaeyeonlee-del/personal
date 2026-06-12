@@ -41,10 +41,10 @@ test('getHooBubbleBurstCount increases with exhale volume', () => {
 test('getHooBubbleBurstCount responds to a gentle blow before users think recognition failed', () => {
   equal(getHooBubbleBurstCount({ phase: 'exhale', volumeLevel: 0, breathIndex: 2 }), 0);
   equal(getHooBubbleBurstCount({ phase: 'exhale', volumeLevel: 0.01, breathIndex: 2 }), 0);
-  ok(getHooBubbleBurstCount({ phase: 'exhale', volumeLevel: 0.02, breathIndex: 2 }) >= 5);
-  ok(getHooBubbleBurstCount({ phase: 'exhale', volumeLevel: 0.02, breathIndex: 2 }) <= 7);
-  ok(getHooBubbleBurstCount({ phase: 'exhale', volumeLevel: 0.04, breathIndex: 2 }) >= 6);
-  ok(getHooBubbleBurstCount({ phase: 'exhale', volumeLevel: 0.14, breathIndex: 2 }) >= 8);
+  ok(getHooBubbleBurstCount({ phase: 'exhale', volumeLevel: 0.02, breathIndex: 2 }) >= 2);
+  ok(getHooBubbleBurstCount({ phase: 'exhale', volumeLevel: 0.02, breathIndex: 2 }) <= 4);
+  ok(getHooBubbleBurstCount({ phase: 'exhale', volumeLevel: 0.04, breathIndex: 2 }) >= 3);
+  ok(getHooBubbleBurstCount({ phase: 'exhale', volumeLevel: 0.14, breathIndex: 2 }) <= 5);
 });
 
 test('getHooBubbleBurstCount adds a stronger final capture breath', () => {
@@ -75,10 +75,11 @@ test('createHooBubble starts at the wand ring and fans upward with varied sizes'
   ok(Math.max(...sizes) <= 86);
   ok(Math.max(...sizes) - Math.min(...sizes) >= 38);
   // 비눗방울은 손잡이 아래가 아니라 마법봉 링 중앙 근처에서 태어난다.
-  ok(bubbles.every((bubble) => bubble.top >= 54 && bubble.top <= 59));
-  ok(bubbles.every((bubble) => bubble.left >= 46 && bubble.left <= 58));
+  ok(bubbles.every((bubble) => bubble.top >= 52 && bubble.top <= 60));
+  ok(bubbles.every((bubble) => bubble.left >= 43 && bubble.left <= 61));
   ok(bubbles.some((bubble) => bubble.driftX < -58));
   ok(bubbles.some((bubble) => bubble.driftX > 58));
-  ok(bubbles.every((bubble) => bubble.delayMs <= 320));
+  ok(bubbles.every((bubble) => bubble.delayMs <= 680));
+  ok(Math.max(...bubbles.map((bubble) => bubble.delayMs)) >= 480);
   ok(bubbles.every((bubble) => bubble.opacity <= 0.72));
 });

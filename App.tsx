@@ -1363,7 +1363,7 @@ async function playHooHydrophoneBubbles(
     }
 
     soundPoolIndexRef.current += 1;
-    await sound.setVolumeAsync(Math.max(0.9, Math.min(1, volume)));
+    await sound.setVolumeAsync(Math.max(0.68, Math.min(0.86, volume)));
     await sound.setPositionAsync(0);
     await sound.replayAsync();
   } catch {
@@ -1649,7 +1649,7 @@ function HooApp({
   const bubbleSoundPoolIndexRef = useRef(0);
   const completionAchievementSoundRef = useRef<Audio.Sound | null>(null);
   const sessionAmbienceRef = useRef<Audio.Sound | null>(null);
-  const exhaleBubbleStateRef = useRef({ nextSeed: 0, lastBurstAtMs: 0 });
+  const exhaleBubbleStateRef = useRef({ nextSeed: 0, lastBurstAtMs: 0, lastSoundAtMs: 0 });
   const finalCaptureAccumMsRef = useRef(0);
   const finalCaptureTickRef = useRef<number | null>(null);
   const hasRecordedCollectionCaptureRef = useRef(false);
@@ -1703,7 +1703,7 @@ function HooApp({
     volumeLevelRef.current = 0;
     setVolumeLevel(0);
     setFloatingBubbles([]);
-    exhaleBubbleStateRef.current = { nextSeed: 0, lastBurstAtMs: 0 };
+    exhaleBubbleStateRef.current = { nextSeed: 0, lastBurstAtMs: 0, lastSoundAtMs: 0 };
     lastDetectedExhaleAtRef.current = 0;
     heldExhaleVolumeRef.current = 0;
     finalCaptureAccumMsRef.current = 0;
@@ -1847,12 +1847,14 @@ function HooApp({
       breathIndex: bubbleContext.breathIndex,
       nowMs: Date.now(),
       lastBurstAtMs: exhaleBubbleStateRef.current.lastBurstAtMs,
+      lastSoundAtMs: exhaleBubbleStateRef.current.lastSoundAtMs,
       nextSeed: exhaleBubbleStateRef.current.nextSeed,
     });
 
     exhaleBubbleStateRef.current = {
       nextSeed: burst.nextSeed,
       lastBurstAtMs: burst.nextLastBurstAtMs,
+      lastSoundAtMs: burst.nextLastSoundAtMs,
     };
 
     if (burst.bubbles.length <= 0) {
@@ -1864,7 +1866,9 @@ function HooApp({
     }
 
     setFloatingBubbles((currentBubbles) => [...currentBubbles.slice(-28), ...burst.bubbles]);
-    void playHooHydrophoneBubbles(bubbleSoundPoolRef, bubbleSoundPoolIndexRef, burst.soundVolume);
+    if (burst.shouldPlaySound) {
+      void playHooHydrophoneBubbles(bubbleSoundPoolRef, bubbleSoundPoolIndexRef, burst.soundVolume);
+    }
 
     // 딜레이 + 상승 + 팝(150ms)까지 모두 끝난 뒤 제거 (늦게 뜨는 방울이 잘리지 않게).
     const clearDelay = Math.max(...burst.bubbles.map((bubble) => bubble.delayMs + bubble.durationMs)) + 420;
@@ -2193,6 +2197,7 @@ function HooApp({
       exhaleBubbleStateRef.current = {
         ...exhaleBubbleStateRef.current,
         lastBurstAtMs: 0,
+        lastSoundAtMs: 0,
       };
       return;
     }

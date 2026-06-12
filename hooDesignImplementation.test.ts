@@ -32,10 +32,11 @@ test('hoo interactions keep screen transitions quiet and use local bubble audio'
   equal(appSource.includes('const bubbleSoundPoolRef = useRef<Audio.Sound[]>([]);'), true);
   equal(appSource.includes('void prepareHooBubbleSoundFromPress();'), true);
   equal(appSource.includes('prepareHooBubbleSound({ shouldPlay: true, volume: 0 })'), false);
+  equal(appSource.includes('if (burst.shouldPlaySound) {'), true);
   equal(appSource.includes('playHooHydrophoneBubbles(bubbleSoundPoolRef, bubbleSoundPoolIndexRef, burst.soundVolume)'), true);
   equal(appSource.includes('await sound.replayAsync();'), true);
-  equal(appSource.includes('await sound.setVolumeAsync(Math.max(0.9, Math.min(1, volume)))'), true);
-  equal(appSource.includes('now - lastBubbleSoundAtRef.current > 360'), false);
+  equal(appSource.includes('await sound.setVolumeAsync(Math.max(0.68, Math.min(0.86, volume)))'), true);
+  equal(appSource.includes('lastBubbleSoundAtRef'), false);
   equal(appSource.includes('await sound.setVolumeAsync(0.16);'), true);
 });
 
@@ -648,7 +649,7 @@ test('hoo creates exhale bubbles from live microphone volume updates and held ex
   equal(appSource.includes('}, 620);'), false);
 });
 
-test('hoo uses one exhale feedback clock and plays bubble audio for every visible burst', () => {
+test('hoo uses one exhale feedback clock and throttles bubble audio independently', () => {
   const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
   const emitSource = appSource.slice(
     appSource.indexOf('const emitHooBubblesFromVolume = useCallback'),
@@ -657,10 +658,11 @@ test('hoo uses one exhale feedback clock and plays bubble audio for every visibl
 
   equal(appSource.includes('const bubbleSoundPoolRef = useRef<Audio.Sound[]>([]);'), true);
   equal(appSource.includes('const bubbleSoundPoolIndexRef = useRef(0);'), true);
-  equal(appSource.includes('const lastBubbleSoundAtRef = useRef(0);'), false);
   equal(appSource.includes('async function prepareHooBubbleSoundPool'), true);
+  equal(appSource.includes('lastSoundAtMs: exhaleBubbleStateRef.current.lastSoundAtMs'), true);
+  equal(appSource.includes('lastSoundAtMs: burst.nextLastSoundAtMs'), true);
+  equal(emitSource.includes('if (burst.shouldPlaySound) {'), true);
   equal(appSource.includes('playHooHydrophoneBubbles(bubbleSoundPoolRef, bubbleSoundPoolIndexRef, burst.soundVolume)'), true);
-  equal(emitSource.includes('now - lastBubbleSoundAtRef.current'), false);
 });
 
 test('hoo stops bubble audio as soon as exhale listening ends', () => {
