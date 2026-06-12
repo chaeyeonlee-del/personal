@@ -87,23 +87,23 @@ export function createHooBubble({ seed, volumeLevel, breathIndex }: HooBubbleInp
   const clusterJitter = seededUnit(seed + 7);
   const direction = seed % 2 === 0 ? 1 : -1;
   // 크기를 실제 볼륨에 연동: 약하게 불면 작은 물방울, 세게 불면 큰 비눗방울.
-  const baseSize = clusterJitter < 0.58
-    ? 14 + sizeJitter * 12 + normalizedVolume * 10
-    : 24 + sizeJitter * 16 + normalizedVolume * 44;
-  const finalBreathBonus = isHooFinalBreath(breathIndex) ? 8 : 0;
+  const baseSize = clusterJitter < 0.62
+    ? 12 + sizeJitter * 10 + normalizedVolume * 6
+    : 24 + sizeJitter * 18 + normalizedVolume * 32;
+  const finalBreathBonus = isHooFinalBreath(breathIndex) ? 6 : 0;
 
   return {
     id: `bubble-${breathIndex}-${seed}`,
     // 마법봉 링(조준점, x≈52%) 중심에 좁게 모여 태어난 뒤, driftX로 올라가며 부채처럼 퍼진다.
-    left: clamp(52 + (sideJitter - 0.5) * 11, 0, 100),
-    // 링 구멍(y≈64%)에서 일관되게 출발 — 손잡이 쪽 흩뿌림 제거 + 시작점을 살짝 더 아래로.
-    top: clamp(66 - liftJitter * 5, 61, 66),
-    size: clamp(baseSize + finalBreathBonus, 18, 92),
+    left: clamp(52 + (sideJitter - 0.5) * 10, 46, 58),
+    // 막대 중간 링 근처에서 출발해 손잡이 아래쪽에서 와다다 생기는 느낌을 줄인다.
+    top: clamp(58.5 - liftJitter * 4.5, 54, 59),
+    size: clamp(baseSize + finalBreathBonus, 16, 86),
     // 상승하면서 좌우로 벌어지는 폭(부채꼴 확산)을 더 키워 "가운데에서 위로 퍼지는" 느낌 강화.
-    driftX: direction * (34 + sideJitter * 72),
+    driftX: direction * (58 + sideJitter * 78),
     durationMs: 2700 + HOO_BUBBLE_RISE_EXTRA_MS + Math.round(liftJitter * 1300),
     // 같은 burst라도 방울마다 시작 시점을 0~240ms 흩어서 "또르르" 흘러나오게(뭉침 방지).
-    delayMs: Math.round(staggerJitter * 240),
+    delayMs: Math.round(staggerJitter * 320),
     opacity: 0.38 + normalizedVolume * 0.22 + clusterJitter * 0.08,
   };
 }
