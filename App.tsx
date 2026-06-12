@@ -263,6 +263,8 @@ const HOO_EXHALE_DETECTION_VOLUME_THRESHOLD = 0.012;
 const HOO_BUBBLE_SOUND_POOL_SIZE = 3;
 const HOO_TACTILE_PRESS_IN_MS = 80;
 const HOO_TACTILE_PRESS_OUT_MS = 165;
+const HOO_ONBOARDING_AUTO_ADVANCE_MS = 2000;
+const HOO_ONBOARDING_FADE_OUT_MS = 520;
 const HOO_COPY_FADE_MS = 760;
 const HOO_TIMER_FADE_MS = 520;
 const HOO_COMPLETION_FADE_MS = 720;
@@ -2252,10 +2254,6 @@ function HooApp({
     setFlowState((currentState) => beginHooSession(currentState));
   }, [collectionState]);
 
-  const beginSessionFromPress = () => {
-    commitAfterTactilePress(beginSession);
-  };
-
   // 가이드 팝업 "시작하기" — 이번 세션 안내 닫음 + 마이크 권한 요청(직접 탭이라 안정적).
   const acknowledgeGuide = useCallback(() => {
     setGuideAcknowledged(true);
@@ -2395,15 +2393,7 @@ function HooApp({
       >
         {flowState.screen === 'onboarding' && (
           <HooScreenFade>
-            <HooTactilePressable
-              accessibilityRole="button"
-              accessibilityLabel="후우 시작하기"
-              onPress={beginSessionFromPress}
-              pressedScale={0.992}
-              style={hooStyles.fullScreenPress}
-            >
-              <Image source={hooOnboardingImage} style={hooStyles.fullBleedImage} resizeMode="cover" />
-            </HooTactilePressable>
+            <HooAutoAdvanceOnboardingSplash onStart={beginSession} />
           </HooScreenFade>
         )}
 
@@ -2603,6 +2593,60 @@ function HooApp({
         )}
       </View>
     </View>
+  );
+}
+
+function HooAutoAdvanceOnboardingSplash({ onStart }: { onStart: () => void }) {
+  const splashExit = useRef(new Animated.Value(1)).current;
+  const hasStartedExitRef = useRef(false);
+  const autoAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startExit = useCallback(() => {
+    if (hasStartedExitRef.current) {
+      return;
+    }
+
+    hasStartedExitRef.current = true;
+    if (autoAdvanceTimeoutRef.current) {
+      clearTimeout(autoAdvanceTimeoutRef.current);
+      autoAdvanceTimeoutRef.current = null;
+    }
+
+    Animated.timing(splashExit, {
+      toValue: 0,
+      duration: HOO_ONBOARDING_FADE_OUT_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        onStart();
+      }
+    });
+  }, [onStart, splashExit]);
+
+  useEffect(() => {
+    autoAdvanceTimeoutRef.current = setTimeout(startExit, HOO_ONBOARDING_AUTO_ADVANCE_MS);
+
+    return () => {
+      if (autoAdvanceTimeoutRef.current) {
+        clearTimeout(autoAdvanceTimeoutRef.current);
+        autoAdvanceTimeoutRef.current = null;
+      }
+    };
+  }, [startExit]);
+
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, { opacity: splashExit }]}>
+      <HooTactilePressable
+        accessibilityRole="button"
+        accessibilityLabel="후우 시작하기"
+        onPress={startExit}
+        pressedScale={0.992}
+        style={hooStyles.fullScreenPress}
+      >
+        <Image source={hooOnboardingImage} style={hooStyles.fullBleedImage} resizeMode="cover" />
+      </HooTactilePressable>
+    </Animated.View>
   );
 }
 

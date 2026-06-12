@@ -109,13 +109,17 @@ test('hoo onboarding shows the full-screen onboarding image immediately', () => 
   const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
   const hooAppSource = appSource.slice(appSource.indexOf('function HooApp('), appSource.indexOf('// 화면이 마운트될 때'));
 
+  equal(appSource.includes('const HOO_ONBOARDING_AUTO_ADVANCE_MS = 2000;'), true);
+  equal(appSource.includes('const HOO_ONBOARDING_FADE_OUT_MS = 520;'), true);
+  equal(appSource.includes('function HooAutoAdvanceOnboardingSplash'), true);
+  equal(appSource.includes('setTimeout(startExit, HOO_ONBOARDING_AUTO_ADVANCE_MS);'), true);
   equal(appSource.includes("const hooOnboardingImage = require('./assets/5.ui element/hoo-onboarding.png');"), true);
   equal(appSource.includes('hoo-splash-intro.mp4'), false);
   equal(appSource.includes('onboarding-splash-open.mp4'), false);
   equal(hooAppSource.includes('const [flowState, setFlowState] = useState(createInitialHooFlowState);'), true);
   equal(hooAppSource.includes("flowState.screen === 'onboarding'"), true);
   equal(hooAppSource.includes('accessibilityLabel="후우 시작하기"'), true);
-  equal(hooAppSource.includes('<Image source={hooOnboardingImage} style={hooStyles.fullBleedImage} resizeMode="cover" />'), true);
+  equal(hooAppSource.includes('<HooAutoAdvanceOnboardingSplash onStart={beginSession} />'), true);
   equal(hooAppSource.includes('hooIntroSplashPhase'), false);
   equal(hooAppSource.includes('completeHooIntroSplash'), false);
   equal(hooAppSource.includes('splashOverlayLayer'), false);
