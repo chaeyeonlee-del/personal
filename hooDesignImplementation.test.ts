@@ -248,7 +248,9 @@ test('hoo breathing copy and completion enter with native text fades', () => {
   equal(appSource.includes('phaseTimerSubtitleSlot'), true);
   equal(appSource.includes('displayedCopy.subtitle ? ('), true);
   equal(appSource.includes('HOO_SESSION_COPY_IMAGE_SCALE'), false);
-  equal(appSource.includes("titleStyle === 'countdown' ? hooStyles.countdownText : hooStyles.instructionTitle"), true);
+  equal(appSource.includes('hooStyles.countdownText'), true);
+  equal(appSource.includes('hooStyles.sessionGuideTitle'), true);
+  equal(appSource.includes('hooStyles.instructionTitle'), true);
   equal(appSource.includes('hooStyles.instructionSubtitle'), true);
   equal(appSource.includes('hooExitingCopyTransitionStyle'), false);
   equal(appSource.includes('hooCompletionEntranceStyle'), true);
@@ -456,7 +458,8 @@ test('hoo completion removes subtitle and positions the character bubble from la
   equal(appSource.includes('getHooCompletionCharacterLayout'), true);
   equal(appSource.includes('completionCharacterLayout.bubbleTop'), true);
   equal(appSource.includes('completionCharacterLayout.characterTop'), true);
-  equal(completionSubtitleSource.includes("flowState.screen === 'complete'\n                  ? null"), true);
+  // 완료 화면은 서브타이틀을 따로 두지 않고 기본값 null로 떨어진다(겹침 방지).
+  equal(completionSubtitleSource.includes("flowState.screen === 'complete'"), false);
   equal(appSource.includes('오늘도 나에게 숨 쉴 틈을 줬어요'), false);
   equal(appSource.includes('{ width: bubbleSize, height: bubbleSize, left: x(71, width), top: y(336, height) }'), false);
 });
@@ -698,7 +701,9 @@ test('hoo first exhale guides users with gentle live feedback only once', () => 
   equal(firstExhaleSource.includes('if (shouldGuideFirstExhale && nextVolumeLevel >= HOO_FIRST_EXHALE_DETECTION_THRESHOLD) {'), true);
   equal(firstExhaleSource.includes('setHasDetectedFirstExhale(true);'), true);
   equal(appSource.includes("setInterval(() => {\n      setFirstExhaleGuideElapsedMs((elapsedMs) => elapsedMs + 100);"), true);
-  equal(appSource.includes("subtitle={\n              firstExhaleGuideCopy"), true);
+  // 안내 문구는 서브타이틀이 아니라 제목 한 줄로 합쳐진다(카운트다운 숫자와 겹치지 않게).
+  equal(appSource.includes('firstExhaleGuideCopy ?? finalBreathGuideCopy'), true);
+  equal(appSource.includes('breathingGuideCopy ?? currentCopy.title'), true);
   equal(appSource.includes("'마이크 쪽으로 후-우 불어보세요'"), false);
   equal(appSource.includes("'좋아요, 방울이 생기고 있어요'"), false);
   equal(appSource.includes("'조금 더 길게 후-우'"), false);
@@ -775,7 +780,8 @@ test('hoo guide start opens the mic gate before starting countdown', () => {
   equal(appSource.includes('&& !isRequestingMicPermission'), true);
   equal(appSource.includes("isMicPermissionRequestPending\n                ? ''"), true);
   equal(appSource.includes('showMicPermissionPrompt={needsMicPermission}'), true);
-  equal(appSource.includes("titleStyle={needsMicPermission ? 'instruction' : flowState.screen === 'prepare' ? 'countdown' : 'instruction'}"), true);
+  equal(appSource.includes("? 'countdown'"), true);
+  equal(appSource.includes("? 'guide'"), true);
 });
 
 test('hoo complete buttons avoid duplicate baked-in image labels', () => {

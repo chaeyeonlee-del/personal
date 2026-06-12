@@ -1741,6 +1741,16 @@ function HooApp({
     elapsedMs: firstExhaleGuideElapsedMs,
     hasDetectedBreath: hasDetectedFirstExhale,
   });
+  // 호흡 중 안내 문구는 "후-우" 자리(제목)에 한 줄로 보여준다. 서브타이틀 슬롯에 두면
+  // 같은 자리의 카운트다운 숫자와 겹쳐서, 아예 제목 한 줄로 합친다.
+  const finalBreathGuideCopy = isFinalBreath && !isFinalCharacterCaptured
+    ? flowState.breathPhase === 'exhale'
+      ? '후— 불어서 캐릭터를 잡아봐요'
+      : '캐릭터를 잡을 숨을 모아요'
+    : null;
+  const breathingGuideCopy = flowState.screen === 'breathing'
+    ? firstExhaleGuideCopy ?? finalBreathGuideCopy
+    : null;
 
   // Looping water ambience — separate from the on-exhale bubble pop sound.
   // Starts when breathing begins (after the 3-2-1 countdown, NOT during prepare)
@@ -2549,27 +2559,25 @@ function HooApp({
                   ? '숨고르기 완료'
                   : flowState.screen === 'failed'
                     ? '방울을 만들지 못했어요'
-                    : currentCopy.title
+                    : breathingGuideCopy ?? currentCopy.title
             }
-            titleStyle={needsMicPermission ? 'instruction' : flowState.screen === 'prepare' ? 'countdown' : 'instruction'}
+            titleStyle={
+              needsMicPermission
+                ? 'instruction'
+                : flowState.screen === 'prepare'
+                ? 'countdown'
+                : breathingGuideCopy
+                ? 'guide'
+                : 'instruction'
+            }
             subtitle={
-              firstExhaleGuideCopy
-                ? firstExhaleGuideCopy
-                : isMicPermissionRequestPending
+              isMicPermissionRequestPending
                 ? null
                 : needsMicPermission
                 ? '호흡을 시작하기 전에 필요해요'
-                : flowState.screen === 'prepare'
-                ? null
-                : flowState.screen === 'complete'
-                  ? null
-                  : flowState.screen === 'failed'
-                    ? '다시 천천히 불어볼까요?'
-                  : isFinalBreath && !isFinalCharacterCaptured
-                    ? flowState.breathPhase === 'exhale'
-                      ? '후— 불어서 캐릭터를 잡아봐요'
-                      : '캐릭터를 잡을 숨을 모아요'
-                    : null
+                : flowState.screen === 'failed'
+                ? '다시 천천히 불어볼까요?'
+                : null
             }
             phaseRemainingSeconds={flowState.screen === 'breathing' ? phaseRemainingSeconds : null}
             breathPhase={flowState.breathPhase}
@@ -3264,7 +3272,7 @@ function HooGuidePopup({
 type HooSessionCopySnapshot = {
   title: string;
   subtitle: string | null;
-  titleStyle: 'countdown' | 'instruction';
+  titleStyle: 'countdown' | 'instruction' | 'guide';
 };
 
 function HooSessionStage({
@@ -3304,7 +3312,7 @@ function HooSessionStage({
   breathIndex: number;
   showProgress: boolean;
   title: string;
-  titleStyle: 'countdown' | 'instruction';
+  titleStyle: 'countdown' | 'instruction' | 'guide';
   subtitle: string | null;
   phaseRemainingSeconds?: number | null;
   breathPhase: HooBreathPhase;
@@ -3978,12 +3986,20 @@ function HooSessionStage({
       >
         <Text
           style={[
-            displayedCopy.titleStyle === 'countdown' ? hooStyles.countdownText : hooStyles.instructionTitle,
+            displayedCopy.titleStyle === 'countdown'
+              ? hooStyles.countdownText
+              : displayedCopy.titleStyle === 'guide'
+              ? hooStyles.sessionGuideTitle
+              : hooStyles.instructionTitle,
             displayedCopy.titleStyle === 'countdown'
               ? { fontSize: s(80, width), lineHeight: s(99, width) }
+              : displayedCopy.titleStyle === 'guide'
+              ? { fontSize: s(20, width), lineHeight: s(27, width) }
               : { fontSize: s(24, width), lineHeight: s(29, width) },
           ]}
           allowFontScaling={false}
+          numberOfLines={displayedCopy.titleStyle === 'guide' ? 1 : undefined}
+          adjustsFontSizeToFit={displayedCopy.titleStyle === 'guide'}
         >
           {displayedCopy.title}
         </Text>
@@ -7155,6 +7171,11 @@ const hooStyles = StyleSheet.create({
   instructionSubtitle: {
     color: '#396073',
     fontWeight: '400',
+    textAlign: 'center',
+  },
+  sessionGuideTitle: {
+    color: '#396073',
+    fontWeight: '700',
     textAlign: 'center',
   },
   encouragementWrap: {
