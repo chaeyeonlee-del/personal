@@ -257,8 +257,9 @@ const HOO_INITIAL_PREPARE_COUNTDOWN = createHooPrepareCountdownValues()[0];
 const HOO_SELECTION_COMMIT_DELAY_MS = 90;
 const HOO_COLLECTION_CAPTURE_SHEET_DELAY_MS = 4200;
 const HOO_COLLECTION_CAPTURE_SHEET_SLIDE_MS = 520;
-const HOO_EXHALE_VOLUME_HOLD_MS = 650;
+const HOO_EXHALE_VOLUME_HOLD_MS = 520;
 const HOO_EXHALE_DETECTION_VOLUME_THRESHOLD = 0.012;
+const HOO_BUBBLE_SOUND_POOL_SIZE = 3;
 const HOO_TACTILE_PRESS_IN_MS = 80;
 const HOO_TACTILE_PRESS_OUT_MS = 165;
 const HOO_COPY_FADE_MS = 760;
@@ -1317,23 +1318,59 @@ async function prepareHooBubbleSound({
   return sound;
 }
 
-async function playHooHydrophoneBubbles(soundRef: MutableRefObject<Audio.Sound | null>, volume: number) {
+async function prepareHooBubbleSoundPool(soundPoolRef: MutableRefObject<Audio.Sound[]>) {
+  if (soundPoolRef.current.length >= HOO_BUBBLE_SOUND_POOL_SIZE) {
+    return;
+  }
+
   try {
-    let sound = soundRef.current;
-    if (!sound) {
-      sound = await prepareHooBubbleSound();
-      soundRef.current = sound;
+    const sounds = [...soundPoolRef.current];
+    while (sounds.length < HOO_BUBBLE_SOUND_POOL_SIZE) {
+      const sound = await prepareHooBubbleSound({ shouldPlay: true, volume: 0 });
+      await sound.pauseAsync();
+      await sound.setPositionAsync(0);
+      await sound.setVolumeAsync(1);
+      sounds.push(sound);
     }
 
+    soundPoolRef.current = sounds;
+  } catch {
+    const sounds = soundPoolRef.current;
+    soundPoolRef.current = [];
+    sounds.forEach((sound) => {
+      void sound.unloadAsync().catch(() => {});
+    });
+  }
+}
+
+async function playHooHydrophoneBubbles(
+  soundPoolRef: MutableRefObject<Audio.Sound[]>,
+  soundPoolIndexRef: MutableRefObject<number>,
+  volume: number,
+) {
+  try {
+    if (soundPoolRef.current.length <= 0) {
+      await prepareHooBubbleSoundPool(soundPoolRef);
+    }
+
+    let sound = soundPoolRef.current[soundPoolIndexRef.current % soundPoolRef.current.length];
+    if (!sound) {
+      sound = await prepareHooBubbleSound();
+      soundPoolRef.current = [sound];
+      soundPoolIndexRef.current = 0;
+    }
+
+    soundPoolIndexRef.current += 1;
     await sound.setVolumeAsync(Math.max(0.9, Math.min(1, volume)));
     await sound.setPositionAsync(0);
     await sound.replayAsync();
   } catch {
-    const sound = soundRef.current;
-    soundRef.current = null;
-    if (sound) {
+    const sounds = soundPoolRef.current;
+    soundPoolRef.current = [];
+    soundPoolIndexRef.current = 0;
+    sounds.forEach((sound) => {
       void sound.unloadAsync().catch(() => {});
-    }
+    });
     // Bubble audio is decorative; breathing should continue if playback is blocked.
   }
 }
@@ -1595,8 +1632,8 @@ function HooApp({
   } | null>(null);
   const [isCollectionCaptureSheetVisible, setIsCollectionCaptureSheetVisible] = useState(false);
   const volumeLevelRef = useRef(0);
-  const lastBubbleSoundAtRef = useRef(0);
-  const bubbleSoundRef = useRef<Audio.Sound | null>(null);
+  const bubbleSoundPoolRef = useRef<Audio.Sound[]>([]);
+  const bubbleSoundPoolIndexRef = useRef(0);
   const completionAchievementSoundRef = useRef<Audio.Sound | null>(null);
   const sessionAmbienceRef = useRef<Audio.Sound | null>(null);
   const exhaleBubbleStateRef = useRef({ nextSeed: 0, lastBurstAtMs: 0 });
@@ -1814,11 +1851,7 @@ function HooApp({
     }
 
     setFloatingBubbles((currentBubbles) => [...currentBubbles.slice(-28), ...burst.bubbles]);
-    const now = Date.now();
-    if (now - lastBubbleSoundAtRef.current > 360) {
-      lastBubbleSoundAtRef.current = now;
-      void playHooHydrophoneBubbles(bubbleSoundRef, burst.soundVolume);
-    }
+    void playHooHydrophoneBubbles(bubbleSoundPoolRef, bubbleSoundPoolIndexRef, burst.soundVolume);
 
     // 딜레이 + 상승 + 팝(150ms)까지 모두 끝난 뒤 제거 (늦게 뜨는 방울이 잘리지 않게).
     const clearDelay = Math.max(...burst.bubbles.map((bubble) => bubble.delayMs + bubble.durationMs)) + 420;
@@ -1838,7 +1871,6 @@ function HooApp({
       lastDetectedExhaleAtRef.current = Date.now();
       heldExhaleVolumeRef.current = nextVolumeLevel;
     }
-    emitHooBubblesFromVolume(nextVolumeLevel);
   }, [emitHooBubblesFromVolume, shouldGuideFirstExhale]);
 
   useHooMicrophoneLevel({
@@ -1895,24 +1927,11 @@ function HooApp({
   }, [handleHooMicLevel, stopWebMicMetering]);
 
   const prepareHooBubbleSoundFromPress = useCallback(async () => {
-    if (bubbleSoundRef.current) {
+    if (bubbleSoundPoolRef.current.length >= HOO_BUBBLE_SOUND_POOL_SIZE) {
       return;
     }
 
-    try {
-      const sound = await prepareHooBubbleSound({ shouldPlay: true, volume: 0 });
-      bubbleSoundRef.current = sound;
-      await sound.replayAsync();
-      await sound.pauseAsync();
-      await sound.setPositionAsync(0);
-      await sound.setVolumeAsync(1);
-    } catch {
-      const sound = bubbleSoundRef.current;
-      bubbleSoundRef.current = null;
-      if (sound) {
-        void sound.unloadAsync().catch(() => {});
-      }
-    }
+    await prepareHooBubbleSoundPool(bubbleSoundPoolRef);
   }, []);
 
   const prepareHooWaterAmbienceSoundFromPress = useCallback(async () => {
@@ -1992,11 +2011,12 @@ function HooApp({
   useEffect(
     () => () => {
       stopWebMicMetering(true);
-      const sound = bubbleSoundRef.current;
-      bubbleSoundRef.current = null;
-      if (sound) {
+      const bubbleSounds = bubbleSoundPoolRef.current;
+      bubbleSoundPoolRef.current = [];
+      bubbleSoundPoolIndexRef.current = 0;
+      bubbleSounds.forEach((sound) => {
         void sound.unloadAsync().catch(() => {});
-      }
+      });
       const completionSound = completionAchievementSoundRef.current;
       completionAchievementSoundRef.current = null;
       if (completionSound) {

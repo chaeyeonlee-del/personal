@@ -29,12 +29,12 @@ test('hoo interactions keep screen transitions quiet and use local bubble audio'
   equal(appSource.includes('hoo-bubble-pop.wav'), false);
   equal(appSource.includes('playHooHydrophoneBubbles'), true);
   equal(appSource.includes('prepareHooBubbleSound'), true);
-  equal(appSource.includes('const bubbleSoundRef = useRef<Audio.Sound | null>(null);'), true);
+  equal(appSource.includes('const bubbleSoundPoolRef = useRef<Audio.Sound[]>([]);'), true);
   equal(appSource.includes('void prepareHooBubbleSoundFromPress();'), true);
-  equal(appSource.includes('playHooHydrophoneBubbles(bubbleSoundRef, burst.soundVolume)'), true);
+  equal(appSource.includes('playHooHydrophoneBubbles(bubbleSoundPoolRef, bubbleSoundPoolIndexRef, burst.soundVolume)'), true);
   equal(appSource.includes('await sound.replayAsync();'), true);
   equal(appSource.includes('await sound.setVolumeAsync(Math.max(0.9, Math.min(1, volume)))'), true);
-  equal(appSource.includes('now - lastBubbleSoundAtRef.current > 360'), true);
+  equal(appSource.includes('now - lastBubbleSoundAtRef.current > 360'), false);
   equal(appSource.includes('await sound.setVolumeAsync(0.16);'), true);
 });
 
@@ -583,7 +583,7 @@ test('hoo creates exhale bubbles from live microphone volume updates and held ex
   equal(appSource.includes('createHooExhaleBubbleBurst'), true);
   equal(appSource.includes('HOO_EXHALE_BUBBLE_BURST_INTERVAL_MS'), true);
   // 다시하기 직후처럼 마이크 샘플이 잠깐 비는 구간은 실제 숨이 감지된 직후에만 보정한다.
-  equal(appSource.includes('const HOO_EXHALE_VOLUME_HOLD_MS = 650;'), true);
+  equal(appSource.includes('const HOO_EXHALE_VOLUME_HOLD_MS = 520;'), true);
   equal(appSource.includes('const HOO_EXHALE_DETECTION_VOLUME_THRESHOLD = 0.012;'), true);
   equal(appSource.includes('exhaleBubbleStateRef'), true);
   equal(appSource.includes('lastDetectedExhaleAtRef'), true);
@@ -598,7 +598,7 @@ test('hoo creates exhale bubbles from live microphone volume updates and held ex
   equal(micLevelHandlerSource.includes('nextVolumeLevel >= HOO_EXHALE_DETECTION_VOLUME_THRESHOLD'), true);
   equal(micLevelHandlerSource.includes('lastDetectedExhaleAtRef.current = Date.now();'), true);
   equal(micLevelHandlerSource.includes('heldExhaleVolumeRef.current = nextVolumeLevel;'), true);
-  equal(micLevelHandlerSource.includes('emitHooBubblesFromVolume(nextVolumeLevel);'), true);
+  equal(micLevelHandlerSource.includes('emitHooBubblesFromVolume(nextVolumeLevel);'), false);
   equal(exhaleIntervalSource.includes('setInterval(() => {'), true);
   equal(exhaleIntervalSource.includes('const canUseHeldExhaleVolume = Date.now() - lastDetectedExhaleAtRef.current <= HOO_EXHALE_VOLUME_HOLD_MS;'), true);
   equal(exhaleIntervalSource.includes('emitHooBubblesFromVolume(canUseHeldExhaleVolume ? heldExhaleVolumeRef.current : volumeLevelRef.current);'), true);
@@ -610,6 +610,21 @@ test('hoo creates exhale bubbles from live microphone volume updates and held ex
   equal(appSource.includes('onLevel: setVolumeLevel'), false);
   equal(appSource.includes('setVolumeLevel(normalizeHooWebAmplitude(Math.sqrt(sum / samples.length)))'), false);
   equal(appSource.includes('}, 620);'), false);
+});
+
+test('hoo uses one exhale feedback clock and plays bubble audio for every visible burst', () => {
+  const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
+  const emitSource = appSource.slice(
+    appSource.indexOf('const emitHooBubblesFromVolume = useCallback'),
+    appSource.indexOf('const handleHooMicLevel = useCallback'),
+  );
+
+  equal(appSource.includes('const bubbleSoundPoolRef = useRef<Audio.Sound[]>([]);'), true);
+  equal(appSource.includes('const bubbleSoundPoolIndexRef = useRef(0);'), true);
+  equal(appSource.includes('const lastBubbleSoundAtRef = useRef(0);'), false);
+  equal(appSource.includes('async function prepareHooBubbleSoundPool'), true);
+  equal(appSource.includes('playHooHydrophoneBubbles(bubbleSoundPoolRef, bubbleSoundPoolIndexRef, burst.soundVolume)'), true);
+  equal(emitSource.includes('now - lastBubbleSoundAtRef.current'), false);
 });
 
 test('hoo first exhale guides users with gentle live feedback only once', () => {
