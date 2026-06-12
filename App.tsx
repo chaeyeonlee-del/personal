@@ -1327,8 +1327,7 @@ async function prepareHooBubbleSoundPool(soundPoolRef: MutableRefObject<Audio.So
   try {
     const sounds = [...soundPoolRef.current];
     while (sounds.length < HOO_BUBBLE_SOUND_POOL_SIZE) {
-      const sound = await prepareHooBubbleSound({ shouldPlay: true, volume: 0 });
-      await sound.pauseAsync();
+      const sound = await prepareHooBubbleSound({ shouldPlay: false, volume: 0 });
       await sound.setPositionAsync(0);
       await sound.setVolumeAsync(1);
       sounds.push(sound);
@@ -1952,7 +1951,7 @@ function HooApp({
     }
 
     try {
-      const sound = await prepareHooWaterAmbienceSound({ shouldPlay: true, volume: 0 });
+      const sound = await prepareHooWaterAmbienceSound({ shouldPlay: false, volume: 0 });
       sessionAmbienceRef.current = sound;
     } catch {
       const sound = sessionAmbienceRef.current;

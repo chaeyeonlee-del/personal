@@ -31,6 +31,7 @@ test('hoo interactions keep screen transitions quiet and use local bubble audio'
   equal(appSource.includes('prepareHooBubbleSound'), true);
   equal(appSource.includes('const bubbleSoundPoolRef = useRef<Audio.Sound[]>([]);'), true);
   equal(appSource.includes('void prepareHooBubbleSoundFromPress();'), true);
+  equal(appSource.includes('prepareHooBubbleSound({ shouldPlay: true, volume: 0 })'), false);
   equal(appSource.includes('playHooHydrophoneBubbles(bubbleSoundPoolRef, bubbleSoundPoolIndexRef, burst.soundVolume)'), true);
   equal(appSource.includes('await sound.replayAsync();'), true);
   equal(appSource.includes('await sound.setVolumeAsync(Math.max(0.9, Math.min(1, volume)))'), true);
@@ -100,7 +101,8 @@ test('hoo water ambience becomes audible only after the prepare countdown', () =
   equal(prepareCountdownSource.includes('await sound.setVolumeAsync(0.16);'), false);
   equal(ambienceActiveSource.includes("flowState.screen === 'prepare'"), false);
   equal(ambienceEffectSource.includes('await sound.setVolumeAsync(0.16);'), true);
-  equal(waterPressSource.includes('prepareHooWaterAmbienceSound({ shouldPlay: true, volume: 0 })'), true);
+  equal(waterPressSource.includes('prepareHooWaterAmbienceSound({ shouldPlay: true, volume: 0 })'), false);
+  equal(waterPressSource.includes('prepareHooWaterAmbienceSound({ shouldPlay: false, volume: 0 })'), true);
 });
 
 test('hoo onboarding shows the full-screen onboarding image immediately', () => {
