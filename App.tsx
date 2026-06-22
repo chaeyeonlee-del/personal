@@ -3289,6 +3289,8 @@ function HooGuideScreen({
   const contentWidth = Math.min(s(326, width), width - s(48, width));
   const guideLayout = getHooResponsiveLayout({ screenWidth: width, screenHeight: height });
   const guideCompactness = getHooSessionElementLayout(guideLayout).guideCompactness;
+  const guideCtaBottomInset = Math.max(30, s(38, width));
+  const guideCtaHorizontalInset = (width - contentWidth) / 2;
   const enter = useRef(new Animated.Value(0)).current;
   const primaryActionLabel = requiresMicPermission ? '마이크 허용하기' : '시작하기';
 
@@ -3346,23 +3348,11 @@ function HooGuideScreen({
             {
               width: 56 - 8 * guideCompactness,
               height: 56 - 8 * guideCompactness,
-              marginBottom: 14 - 5 * guideCompactness,
+              marginBottom: 20 - 7 * guideCompactness,
             },
           ]}
           resizeMode="contain"
         />
-        <Text
-          style={[
-            hooStyles.guideTitle,
-            {
-              fontSize: 24 - 2 * guideCompactness,
-              marginBottom: 24 - 8 * guideCompactness,
-            },
-          ]}
-          allowFontScaling={false}
-        >
-          짧은 호흡으로 마음을 쉬어가요
-        </Text>
 
         <View style={hooStyles.guideSteps}>
           {HOO_GUIDE_STEPS.map((step, index) => (
@@ -3395,14 +3385,29 @@ function HooGuideScreen({
             hooStyles.guideNote,
             {
               paddingVertical: 12 - 3 * guideCompactness,
-              marginTop: 14 - 4 * guideCompactness,
-              marginBottom: 16 - 5 * guideCompactness,
+              marginTop: 10 - 3 * guideCompactness,
+              marginBottom: 14 - 4 * guideCompactness,
             },
           ]}
         >
           <Text style={hooStyles.guideNoteText} allowFontScaling={false}>마이크는 숨소리만 확인해요</Text>
         </View>
 
+      </Animated.View>
+      <Animated.View
+        style={[
+          hooStyles.guideStartButtonWrap,
+          {
+            left: guideCtaHorizontalInset,
+            right: guideCtaHorizontalInset,
+            bottom: guideCtaBottomInset,
+            opacity: enter,
+            transform: [
+              { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
+            ],
+          },
+        ]}
+      >
         <HooTactilePressable
           accessibilityRole="button"
           accessibilityLabel={primaryActionLabel}
@@ -3878,7 +3883,10 @@ function HooSessionStage({
   const hooCopyTransitionStyle = {
     opacity: copyTransition,
   };
-  const sessionCopyTop = (displayedCopy.titleStyle === 'countdown' ? y(190, height) : y(227, height)) - sessionElementLayout.copyLift;
+  const sessionGuideCopyTop = y(227, height) - sessionElementLayout.copyLift * 0.45;
+  const sessionCopyTop = displayedCopy.titleStyle === 'countdown'
+    ? y(190, height) - sessionElementLayout.copyLift
+    : sessionGuideCopyTop;
   const copyDissolveLayerWidth = displayedCopy.titleStyle === 'countdown' ? x(132, width) : x(286, width);
   const copyDissolveLayerHeight = displayedCopy.titleStyle === 'countdown' ? y(112, height) : y(70, height);
   const copyDissolveLayerTop = sessionCopyTop + (displayedCopy.titleStyle === 'countdown' ? y(-4, height) : y(-8, height));
@@ -3898,9 +3906,12 @@ function HooSessionStage({
     }),
   };
   const phaseTimerLeft = x(162, width);
-  const phaseTimerTop = y(257, height);
   const phaseTimerWidth = x(66, width);
   const phaseTimerHeight = y(42, height);
+  const phaseTimerTop = displayedCopy.titleStyle === 'guide'
+    ? sessionGuideCopyTop + y(75, height)
+    : y(257, height) - sessionElementLayout.copyLift * 0.35;
+  const tapFallbackHintTop = phaseTimerTop + phaseTimerHeight + y(8, height);
   const characterFlightStyle = isCharacterFlying
     ? {
         transform: [
@@ -4273,7 +4284,7 @@ function HooSessionStage({
             {
               left: x(52, width),
               right: x(52, width),
-              top: y(316, height) - sessionElementLayout.copyLift,
+              top: tapFallbackHintTop,
               paddingHorizontal: x(14, width),
               paddingVertical: y(7, height),
             },
@@ -7156,15 +7167,6 @@ const hooStyles = StyleSheet.create({
     height: 52,
     marginBottom: 10,
   },
-  guideTitle: {
-    color: '#191F28',
-    fontSize: 23,
-    fontWeight: '800',
-    marginBottom: 8,
-    maxWidth: 286,
-    textAlign: 'center',
-    lineHeight: 30,
-  },
   guideSteps: {
     alignSelf: 'stretch',
     borderRadius: 20,
@@ -7206,12 +7208,7 @@ const hooStyles = StyleSheet.create({
   },
   guideNote: {
     alignSelf: 'stretch',
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderRadius: 14,
-    paddingVertical: 12,
     alignItems: 'center',
-    marginTop: 14,
-    marginBottom: 16,
   },
   guideNoteText: {
     color: '#6B7684',
@@ -7219,6 +7216,9 @@ const hooStyles = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 17,
     textAlign: 'center',
+  },
+  guideStartButtonWrap: {
+    position: 'absolute',
   },
   guideStartButton: {
     alignSelf: 'stretch',

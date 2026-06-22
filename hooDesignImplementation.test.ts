@@ -825,6 +825,10 @@ test('hoo varies the breathing guide copy across the five breaths', () => {
 
 test('hoo breathing copy and phase timer distinguish inhale from exhale tone', () => {
   const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
+  const layoutSource = appSource.slice(
+    appSource.indexOf('const sessionGuideCopyTop ='),
+    appSource.indexOf('const characterFlightStyle =', appSource.indexOf('const sessionGuideCopyTop =')),
+  );
 
   equal(appSource.includes('phaseTimerTextInhale'), true);
   equal(appSource.includes('phaseTimerTextExhale'), true);
@@ -836,6 +840,12 @@ test('hoo breathing copy and phase timer distinguish inhale from exhale tone', (
   equal(appSource.includes("color: '#254F68'"), true);
   equal(appSource.includes("displayedCopy.breathPhase === 'inhale' ? hooStyles.sessionCopyToneInhale : hooStyles.sessionCopyToneExhale"), true);
   equal(appSource.includes("displayedCopy.titleStyle === 'guide' ? displayedCopyToneStyle : null"), true);
+  equal(layoutSource.includes('const sessionGuideCopyTop ='), true);
+  equal(layoutSource.includes("displayedCopy.titleStyle === 'guide'"), true);
+  equal(layoutSource.includes('const phaseTimerTop = displayedCopy.titleStyle ==='), true);
+  equal(layoutSource.includes('const tapFallbackHintTop = phaseTimerTop + phaseTimerHeight +'), true);
+  equal(appSource.includes('top: tapFallbackHintTop'), true);
+  equal(appSource.includes('top: y(316, height) - sessionElementLayout.copyLift'), false);
 });
 
 test('hoo guide keeps the breathing instructions short and separates mic permission from starting', () => {
@@ -845,7 +855,7 @@ test('hoo guide keeps the breathing instructions short and separates mic permiss
     appSource.indexOf('];', appSource.indexOf('const HOO_GUIDE_STEPS = [')),
   );
 
-  equal(appSource.includes('짧은 호흡으로 마음을 쉬어가요'), true);
+  equal(appSource.includes('짧은 호흡으로 마음을 쉬어가요'), false);
   equal(appSource.includes('짧은 호흡으로 마음을 쉬게 해요'), false);
   equal(appSource.includes('천천히 숨 쉬며 비눗방울을 키워요'), false);
   equal(appSource.includes('숨을 고르며 비눗방울을 키워요'), false);
@@ -858,9 +868,16 @@ test('hoo guide keeps the breathing instructions short and separates mic permiss
   equal(appSource.includes('guideStepTitleInhale'), false);
   equal(appSource.includes('guideStepTitleExhale'), false);
   equal(appSource.includes("step.tone === 'exhale'"), false);
+  equal(appSource.includes('hooStyles.guideTitle'), false);
   equal(appSource.includes("guideStepNumberText: {\n    color: '#191F28'"), true);
   equal(appSource.includes("guideStepTitle: {\n    color: '#191F28'"), true);
   equal(appSource.includes('마이크는 숨소리만 확인해요'), true);
+  equal(appSource.includes("guideNote: {\n    alignSelf: 'stretch',\n    alignItems: 'center'"), true);
+  equal(appSource.includes("guideNote: {\n    alignSelf: 'stretch',\n    backgroundColor:"), false);
+  equal(appSource.includes('const guideCtaBottomInset = Math.max(30, s(38, width));'), true);
+  equal(appSource.includes('const guideCtaHorizontalInset = (width - contentWidth) / 2;'), true);
+  equal(appSource.includes('hooStyles.guideStartButtonWrap'), true);
+  equal(appSource.includes('bottom: guideCtaBottomInset'), true);
   equal(appSource.includes('녹음 없이 숨 세기만 확인해요'), false);
   equal(appSource.includes("const primaryActionLabel = requiresMicPermission ? '마이크 허용하기' : '시작하기';"), true);
   equal(appSource.includes('requiresMicPermission={!isMicReady && !hasOpenedMicGate}'), true);
