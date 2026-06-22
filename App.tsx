@@ -75,7 +75,11 @@ import {
   tickHooBigBubble,
   type HooBigBubbleState,
 } from './hooBigBubble';
-import { HOO_FIRST_EXHALE_DETECTION_THRESHOLD, getHooFirstExhaleGuideCopy } from './hooFirstExhaleGuide';
+import {
+  HOO_FIRST_EXHALE_DETECTION_THRESHOLD,
+  HOO_FIRST_EXHALE_HINT_DELAY_MS,
+  getHooFirstExhaleGuideCopy,
+} from './hooFirstExhaleGuide';
 import { pickRandomHooEncouragement } from './hooEncouragement';
 import {
   beginHooSession,
@@ -149,7 +153,6 @@ const hooSessionBackgroundPoster = require('./assets/5.ui element/hoo-session-bg
 const hooLogo = require('./assets/1.branding/hoo-logo.png');
 const hooWand = require('./assets/5.ui element/hoo-wand.png');
 const hooWandSessionNode = require('./assets/5.ui element/hoo-wand-session-node.png');
-const hooLogoHeaderNode = require('./assets/1.branding/hoo-logo-header-node.png');
 const hooCompleteBubbleNode = require('./assets/3.session-bubbles/hoo-complete-bubble-node.png');
 const hooCollectionCharacters: ImageSourcePropType[] = [
   require('./assets/2.collection-generated/hoo-collection-01-butterfly.png'),
@@ -271,18 +274,31 @@ const HOO_COLLECTION_CAPTURE_SHEET_DELAY_MS = 4200;
 const HOO_COLLECTION_CAPTURE_SHEET_SLIDE_MS = 520;
 const HOO_EXHALE_VOLUME_HOLD_MS = 520;
 const HOO_EXHALE_DETECTION_VOLUME_THRESHOLD = 0.012;
+const HOO_PRESS_EXHALE_FALLBACK_VOLUME_LEVEL = 0.42;
 const HOO_BUBBLE_SOUND_POOL_SIZE = 3;
 const HOO_TACTILE_PRESS_IN_MS = 80;
 const HOO_TACTILE_PRESS_OUT_MS = 165;
 const HOO_ONBOARDING_AUTO_ADVANCE_MS = 2000;
-const HOO_ONBOARDING_FADE_OUT_MS = 520;
+const HOO_ONBOARDING_EXIT_MS = 360;
 const HOO_COPY_FADE_MS = 760;
 const HOO_TIMER_FADE_MS = 520;
 const HOO_COMPLETION_FADE_MS = 720;
 const HOO_FINAL_CAPTURE_BLOW_MS = 1200;
+const HOO_BREATH_GUIDE_COPY_BY_INDEX = [
+  { inhale: '천천히 숨을 들이쉬어요', exhale: '후-우, 길게 내쉬어요' },
+  { inhale: '조금 더 깊게 들이쉬어요', exhale: '입으로 부드럽게 내쉬어요' },
+  { inhale: '어깨 힘을 살짝 풀어요', exhale: '천천히 끝까지 내쉬어요' },
+  { inhale: '한 번 더 편하게 들이쉬어요', exhale: '숨이 길게 빠져나가게 해요' },
+  { inhale: '천천히 숨을 깊게 들이쉬어요', exhale: '마지막으로 길게 후-우' },
+] as const;
 const glassSoft = createGlassSurface('soft', Platform.OS) as any;
 const glassRegular = createGlassSurface('regular', Platform.OS) as any;
 const glassStrong = createGlassSurface('strong', Platform.OS) as any;
+
+function getHooBreathGuideCopy(breathIndex: number, breathPhase: HooBreathPhase) {
+  const copyIndex = Math.min(HOO_BREATH_GUIDE_COPY_BY_INDEX.length - 1, Math.max(0, breathIndex - 1));
+  return HOO_BREATH_GUIDE_COPY_BY_INDEX[copyIndex][breathPhase];
+}
 
 type ScreenName = 'onboarding' | 'arrival' | 'destination' | 'select' | 'prepare' | 'breathing' | 'complete' | 'records' | 'routine';
 
@@ -836,7 +852,8 @@ export default function App() {
     screenWidth: windowSize.width,
     screenHeight: windowSize.height,
   });
-  const webMockupScale = Platform.OS === 'web'
+  const shouldUseWebMockup = process.env.EXPO_PUBLIC_HOO_WEB_MOCKUP === 'true';
+  const webMockupScale = Platform.OS === 'web' && shouldUseWebMockup
     ? Math.min(
       1,
       Math.max(
@@ -848,9 +865,9 @@ export default function App() {
       ),
     )
     : 1;
-  const width = Platform.OS === 'web' ? Math.round(FIGMA_WIDTH * webMockupScale) : layout.width;
-  const height = Platform.OS === 'web' ? Math.round(FIGMA_HEIGHT * webMockupScale) : layout.height;
-  const isFramed = Platform.OS === 'web' ? true : layout.isFramed;
+  const width = Platform.OS === 'web' && shouldUseWebMockup ? Math.round(FIGMA_WIDTH * webMockupScale) : layout.width;
+  const height = Platform.OS === 'web' && shouldUseWebMockup ? Math.round(FIGMA_HEIGHT * webMockupScale) : layout.height;
+  const isFramed = Platform.OS === 'web' && shouldUseWebMockup ? true : layout.isFramed;
 
   return (
     <HooApp
@@ -858,6 +875,7 @@ export default function App() {
       height={height}
       isFramed={isFramed}
       screenHeight={windowSize.height}
+      shouldUseWebMockup={shouldUseWebMockup}
     />
   );
 
@@ -1716,11 +1734,13 @@ function HooApp({
   height,
   isFramed,
   screenHeight,
+  shouldUseWebMockup,
 }: {
   width: number;
   height: number;
   isFramed: boolean;
   screenHeight: number;
+  shouldUseWebMockup: boolean;
 }) {
   const [flowState, setFlowState] = useState(createInitialHooFlowState);
   const [prepareCountdown, setPrepareCountdown] = useState<number>(HOO_INITIAL_PREPARE_COUNTDOWN);
@@ -1771,6 +1791,7 @@ function HooApp({
   const collectionCaptureSheetDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastDetectedExhaleAtRef = useRef(0);
   const heldExhaleVolumeRef = useRef(0);
+  const isPressExhaleFallbackActiveRef = useRef(false);
   const webMicStreamRef = useRef<MediaStream | null>(null);
   const webAudioContextRef = useRef<AudioContext | null>(null);
   const webMicSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -1798,13 +1819,18 @@ function HooApp({
   });
   // 호흡 중 안내 문구는 "후-우" 자리(제목)에 한 줄로 보여준다. 서브타이틀 슬롯에 두면
   // 같은 자리의 카운트다운 숫자와 겹쳐서, 아예 제목 한 줄로 합친다.
+  const micEnvironmentFallbackHint =
+    shouldListenToMic && firstExhaleGuideElapsedMs >= HOO_FIRST_EXHALE_HINT_DELAY_MS
+      ? '에어팟·소음 환경이면 화면을 꾸욱 눌러도 돼요'
+      : null;
+  const breathSequenceGuideCopy = getHooBreathGuideCopy(flowState.breathIndex, flowState.breathPhase);
   const finalBreathGuideCopy = isFinalBreath && !isFinalCharacterCaptured
     ? flowState.breathPhase === 'exhale'
       ? '후— 불어서 캐릭터를 잡아봐요'
-      : '캐릭터를 잡을 숨을 모아요'
+      : '천천히 숨을 깊게 들이쉬어요'
     : null;
   const breathingGuideCopy = flowState.screen === 'breathing'
-    ? firstExhaleGuideCopy ?? finalBreathGuideCopy
+    ? firstExhaleGuideCopy ?? finalBreathGuideCopy ?? breathSequenceGuideCopy
     : null;
 
   // Looping water ambience — separate from the on-exhale bubble pop sound.
@@ -2039,16 +2065,46 @@ function HooApp({
   }, []);
 
   const handleHooMicLevel = useCallback((nextVolumeLevel: number) => {
-    volumeLevelRef.current = nextVolumeLevel;
-    setVolumeLevel(nextVolumeLevel);
-    if (shouldGuideFirstExhale && nextVolumeLevel >= HOO_FIRST_EXHALE_DETECTION_THRESHOLD) {
+    const effectiveVolumeLevel = isPressExhaleFallbackActiveRef.current
+      ? Math.max(nextVolumeLevel, HOO_PRESS_EXHALE_FALLBACK_VOLUME_LEVEL)
+      : nextVolumeLevel;
+    volumeLevelRef.current = effectiveVolumeLevel;
+    setVolumeLevel(effectiveVolumeLevel);
+    if (shouldGuideFirstExhale && effectiveVolumeLevel >= HOO_FIRST_EXHALE_DETECTION_THRESHOLD) {
       setHasDetectedFirstExhale(true);
     }
-    if (hooBubbleContextRef.current.shouldListenToMic && nextVolumeLevel >= HOO_EXHALE_DETECTION_VOLUME_THRESHOLD) {
+    if (hooBubbleContextRef.current.shouldListenToMic && effectiveVolumeLevel >= HOO_EXHALE_DETECTION_VOLUME_THRESHOLD) {
       lastDetectedExhaleAtRef.current = Date.now();
-      heldExhaleVolumeRef.current = nextVolumeLevel;
+      heldExhaleVolumeRef.current = effectiveVolumeLevel;
     }
   }, [emitHooBubblesFromVolume, shouldGuideFirstExhale]);
+
+  const handleHooPressExhaleFallbackStart = useCallback(() => {
+    if (!hooBubbleContextRef.current.shouldListenToMic) {
+      return;
+    }
+
+    isPressExhaleFallbackActiveRef.current = true;
+    const fallbackVolumeLevel = Math.max(volumeLevelRef.current, HOO_PRESS_EXHALE_FALLBACK_VOLUME_LEVEL);
+    volumeLevelRef.current = fallbackVolumeLevel;
+    setVolumeLevel(fallbackVolumeLevel);
+    lastDetectedExhaleAtRef.current = Date.now();
+    heldExhaleVolumeRef.current = fallbackVolumeLevel;
+    setHasDetectedFirstExhale(true);
+    emitHooBubblesFromVolume(fallbackVolumeLevel);
+  }, [emitHooBubblesFromVolume]);
+
+  const handleHooPressExhaleFallbackEnd = useCallback(() => {
+    if (!isPressExhaleFallbackActiveRef.current) {
+      return;
+    }
+
+    isPressExhaleFallbackActiveRef.current = false;
+    volumeLevelRef.current = 0;
+    setVolumeLevel(0);
+    lastDetectedExhaleAtRef.current = 0;
+    heldExhaleVolumeRef.current = 0;
+  }, []);
 
   useHooMicrophoneLevel({
     active: shouldMeterMic,
@@ -2377,6 +2433,7 @@ function HooApp({
 
   useEffect(() => {
     if (!shouldListenToMic) {
+      isPressExhaleFallbackActiveRef.current = false;
       stopHooBubbleSounds(bubbleSoundPoolRef);
       setVolumeLevel(0);
       lastDetectedExhaleAtRef.current = 0;
@@ -2394,8 +2451,16 @@ function HooApp({
 
     // 마이크 샘플이 잠깐 비는 순간만, 실제 숨 감지 직후의 볼륨을 아주 짧게 유지한다.
     const interval = setInterval(() => {
+      const pressFallbackVolumeLevel = isPressExhaleFallbackActiveRef.current
+        ? Math.max(volumeLevelRef.current, HOO_PRESS_EXHALE_FALLBACK_VOLUME_LEVEL)
+        : null;
+      if (pressFallbackVolumeLevel !== null) {
+        volumeLevelRef.current = pressFallbackVolumeLevel;
+        heldExhaleVolumeRef.current = pressFallbackVolumeLevel;
+        lastDetectedExhaleAtRef.current = Date.now();
+      }
       const canUseHeldExhaleVolume = Date.now() - lastDetectedExhaleAtRef.current <= HOO_EXHALE_VOLUME_HOLD_MS;
-      emitHooBubblesFromVolume(canUseHeldExhaleVolume ? heldExhaleVolumeRef.current : volumeLevelRef.current);
+      emitHooBubblesFromVolume(pressFallbackVolumeLevel ?? (canUseHeldExhaleVolume ? heldExhaleVolumeRef.current : volumeLevelRef.current));
     }, HOO_EXHALE_BUBBLE_BURST_INTERVAL_MS);
 
     return () => {
@@ -2425,20 +2490,8 @@ function HooApp({
     }, HOO_SELECTION_COMMIT_DELAY_MS);
   }, []);
 
-  const backToOnboarding = useCallback(() => {
-    clearCollectionCaptureSheetDelay();
-    setIsCollectionCaptureSheetVisible(false);
-    setFlowState((currentState) => ({
-      ...currentState,
-      screen: 'onboarding',
-      selectedMood: null,
-      breathIndex: 1,
-      breathPhase: 'inhale',
-    }));
-  }, []);
-
   const beginSession = useCallback(() => {
-    // 세션을 시작할 때마다 안내 팝업을 다시 보여준다.
+    // 세션을 시작할 때마다 안내 화면을 다시 보여준다.
     clearCollectionCaptureSheetDelay();
     resetHooBreathFeedbackState();
     setSelectedHooCollectionCharacter(chooseRandomHooCollectionSessionCharacter(collectionState));
@@ -2449,7 +2502,7 @@ function HooApp({
     setFlowState((currentState) => beginHooSession(currentState));
   }, [collectionState]);
 
-  // 가이드 팝업 "시작하기" — 이번 세션 안내 닫음 + 마이크 권한 요청(직접 탭이라 안정적).
+  // 가이드 화면 "시작하기" — 이번 세션 안내 닫음 + 마이크 권한 요청(직접 탭이라 안정적).
   const acknowledgeGuide = useCallback(() => {
     setGuideAcknowledged(true);
     void requestMicPermissionFromPress();
@@ -2536,14 +2589,15 @@ function HooApp({
     || flowState.screen === 'breathing'
     || flowState.screen === 'complete'
     || flowState.screen === 'failed';
-  // 가이드 팝업이 떠 있는 동안엔 마이크 안내를 띄우지 않는다.
-  const isGuideOpen = flowState.screen === 'prepare' && !guideAcknowledged;
+  // 가이드 화면이 떠 있는 동안엔 마이크 안내를 띄우지 않는다.
+  const isGuideScreen = flowState.screen === 'prepare' && !guideAcknowledged;
+  const shouldRenderHooSessionStage = isHooSessionScreen && !isGuideScreen;
   // 마이크 권한 안내는 "아직 게이트도 안 열었고 + 마이크도 준비 안 됨"일 때만.
   // 한 번 허용해 isMicReady가 true가 되면 다시하기 후에도 안내가 번쩍이지 않는다.
   const isMicPermissionRequestPending =
     flowState.screen === 'prepare' && isRequestingMicPermission;
   const needsMicPermission =
-    flowState.screen === 'prepare' && !isGuideOpen && !isRequestingMicPermission && !hasOpenedMicGate && !isMicReady;
+    flowState.screen === 'prepare' && !isGuideScreen && !isRequestingMicPermission && !hasOpenedMicGate && !isMicReady;
   const visibleSessionHeight = isFramed ? height : screenHeight;
   const completionResponsiveLayout = {
     width,
@@ -2561,7 +2615,7 @@ function HooApp({
     buttonHeight: y(56, height),
   });
   const shouldUseStaticSessionBackground = flowState.screen === 'complete';
-  const isWebMockup = Platform.OS === 'web' && isFramed;
+  const isWebMockup = shouldUseWebMockup && isFramed;
 
   return (
     <View style={[hooStyles.root, isWebMockup && hooStyles.webMockupRoot, { overflow: 'hidden' }]}>
@@ -2594,13 +2648,20 @@ function HooApp({
           ]}
         >
         {flowState.screen === 'onboarding' && (
-          <HooScreenFade>
-            <HooAutoAdvanceOnboardingSplash onStart={beginSession} />
-          </HooScreenFade>
+          <HooAutoAdvanceOnboardingSplash onStart={beginSession} />
         )}
 
 
-        {isHooSessionScreen && (
+        {isGuideScreen && (
+          <HooGuideScreen
+            width={width}
+            height={visibleSessionHeight}
+            requiresMicPermission={!isMicReady && !hasOpenedMicGate}
+            onStart={acknowledgeGuide}
+          />
+        )}
+
+        {shouldRenderHooSessionStage && (
           <HooScreenFade>
           <HooSessionStage
             width={width}
@@ -2641,6 +2702,7 @@ function HooApp({
             }
             phaseRemainingSeconds={flowState.screen === 'breathing' ? phaseRemainingSeconds : null}
             breathPhase={flowState.breathPhase}
+            tapFallbackHint={micEnvironmentFallbackHint}
             shouldUseStaticBackground={shouldUseStaticSessionBackground}
             showInhaleFlow={flowState.screen === 'breathing' && flowState.breathPhase === 'inhale'}
             characterSource={getHooCollectionImageSource(selectedHooCollectionCharacter.imageKey)}
@@ -2677,7 +2739,8 @@ function HooApp({
             showMicPermissionPrompt={needsMicPermission}
             micNotice={micNotice}
             onRequestMicPermission={requestMicPermissionFromPress}
-            onBack={backToOnboarding}
+            onPressExhaleFallbackStart={shouldListenToMic ? handleHooPressExhaleFallbackStart : undefined}
+            onPressExhaleFallbackEnd={shouldListenToMic ? handleHooPressExhaleFallbackEnd : undefined}
             accessibilityLabel={
               flowState.screen === 'complete'
                 ? `숨고르기 완료, 캐릭터 ${flowState.collectedCharacters}개 수집`
@@ -2792,14 +2855,6 @@ function HooApp({
             onDismiss={dismissCollectionCaptureSheet}
           />
         )}
-        {isGuideOpen && (
-          <HooGuidePopup
-            width={width}
-            height={visibleSessionHeight}
-            onStart={acknowledgeGuide}
-            onClose={backToOnboarding}
-          />
-        )}
         </View>
       </HooPhoneMockup>
     </View>
@@ -2807,7 +2862,7 @@ function HooApp({
 }
 
 function HooAutoAdvanceOnboardingSplash({ onStart }: { onStart: () => void }) {
-  const splashExit = useRef(new Animated.Value(1)).current;
+  const splashExit = useRef(new Animated.Value(0)).current;
   const hasStartedExitRef = useRef(false);
   const autoAdvanceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -2823,8 +2878,8 @@ function HooAutoAdvanceOnboardingSplash({ onStart }: { onStart: () => void }) {
     }
 
     Animated.timing(splashExit, {
-      toValue: 0,
-      duration: HOO_ONBOARDING_FADE_OUT_MS,
+      toValue: 1,
+      duration: HOO_ONBOARDING_EXIT_MS,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(({ finished }) => {
@@ -2846,7 +2901,16 @@ function HooAutoAdvanceOnboardingSplash({ onStart }: { onStart: () => void }) {
   }, [startExit]);
 
   return (
-    <Animated.View style={[StyleSheet.absoluteFill, { opacity: splashExit }]}>
+    <Animated.View
+      style={[
+        StyleSheet.absoluteFill,
+        {
+          transform: [
+            { scale: splashExit.interpolate({ inputRange: [0, 1], outputRange: [1, 0.988] }) },
+          ],
+        },
+      ]}
+    >
       <HooTactilePressable
         accessibilityRole="button"
         accessibilityLabel="후우 시작하기"
@@ -3188,26 +3252,45 @@ function HooCollectionScreen({
 }
 
 const HOO_GUIDE_STEPS = [
-  { n: '1', title: '천천히 숨 들이마시기' },
-  { n: '2', title: '마이크에 후-우 불기' },
-  { n: '3', title: '마지막엔 큰 방울 만들기' },
+  { n: '1', title: '숫자에 맞춰 숨을 천천히 들이마셔요' },
+  { n: '2', title: '후- 하고 내쉬면 비눗방울이 생겨요' },
+  { n: '3', title: '마지막에는 비눗방울로 캐릭터를 잡아요' },
 ];
 
-function HooGuidePopup({
+const HOO_COPY_DISSOLVE_PARTICLES = [
+  { x: 16, y: 38, toX: -18, toY: -8, size: 3.2, opacity: 0.28 },
+  { x: 26, y: 28, toX: -8, toY: -18, size: 2.6, opacity: 0.22 },
+  { x: 36, y: 42, toX: -12, toY: 10, size: 2.2, opacity: 0.2 },
+  { x: 46, y: 32, toX: -3, toY: -15, size: 2.8, opacity: 0.24 },
+  { x: 54, y: 40, toX: 4, toY: 12, size: 2.1, opacity: 0.18 },
+  { x: 63, y: 30, toX: 12, toY: -16, size: 2.7, opacity: 0.23 },
+  { x: 72, y: 44, toX: 14, toY: 8, size: 2.3, opacity: 0.2 },
+  { x: 83, y: 34, toX: 20, toY: -9, size: 3, opacity: 0.26 },
+] as const;
+
+const HOO_TIMER_DISSOLVE_PARTICLES = [
+  { x: 26, y: 34, toX: -8, toY: -7, size: 2.5, opacity: 0.26 },
+  { x: 40, y: 25, toX: -4, toY: -12, size: 2.2, opacity: 0.22 },
+  { x: 56, y: 28, toX: 6, toY: -10, size: 2.3, opacity: 0.24 },
+  { x: 70, y: 40, toX: 9, toY: 4, size: 2.5, opacity: 0.24 },
+] as const;
+
+function HooGuideScreen({
   width,
   height,
+  requiresMicPermission,
   onStart,
-  onClose,
 }: {
   width: number;
   height: number;
+  requiresMicPermission: boolean;
   onStart: () => void;
-  onClose: () => void;
 }) {
-  const cardWidth = Math.min(s(340, width), width - s(40, width));
+  const contentWidth = Math.min(s(326, width), width - s(48, width));
   const guideLayout = getHooResponsiveLayout({ screenWidth: width, screenHeight: height });
   const guideCompactness = getHooSessionElementLayout(guideLayout).guideCompactness;
   const enter = useRef(new Animated.Value(0)).current;
+  const primaryActionLabel = requiresMicPermission ? '마이크 허용하기' : '시작하기';
 
   useEffect(() => {
     Animated.timing(enter, {
@@ -3218,7 +3301,7 @@ function HooGuidePopup({
     }).start();
   }, [enter]);
 
-  // 버튼을 누르면 팝업이 부드럽게 사라진 뒤 실제 동작(시작/닫기)을 실행한다.
+  // 버튼을 누르면 안내 화면이 부드럽게 사라진 뒤 실제 시작 동작을 실행한다.
   const runExit = useCallback(
     (after: () => void) => {
       Animated.timing(enter, {
@@ -3236,41 +3319,34 @@ function HooGuidePopup({
   );
 
   return (
-    <View style={hooStyles.guideOverlay}>
-      <Animated.View pointerEvents="none" style={[hooStyles.guideBackdrop, { opacity: enter }]} />
+    <View style={[hooStyles.guideScreen, { width, height }]}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(255,255,255,0.72)', 'rgba(240,249,253,0.68)', 'rgba(226,244,251,0.56)']}
+        style={StyleSheet.absoluteFill}
+      />
       <Animated.View
         style={[
-          hooStyles.guideCard,
+          hooStyles.guideScreenContent,
           {
-            width: cardWidth,
-            paddingTop: 34 - 8 * guideCompactness,
-            paddingBottom: 22 - 6 * guideCompactness,
+            width: contentWidth,
+            paddingTop: 64 - 16 * guideCompactness,
+            paddingBottom: 28 - 8 * guideCompactness,
             opacity: enter,
             transform: [
-              { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) },
-              { scale: enter.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
+              { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
             ],
           },
         ]}
       >
-        <HooTactilePressable
-          accessibilityRole="button"
-          accessibilityLabel="닫기"
-          onPress={() => runExit(onClose)}
-          pressedScale={0.9}
-          style={hooStyles.guideClose}
-        >
-          <Text style={hooStyles.guideCloseText} allowFontScaling={false}>✕</Text>
-        </HooTactilePressable>
-
         <Image
           source={hooBubbleSelected}
           style={[
             hooStyles.guideBubbleIcon,
             {
-              width: 52 - 8 * guideCompactness,
-              height: 52 - 8 * guideCompactness,
-              marginBottom: 10 - 4 * guideCompactness,
+              width: 56 - 8 * guideCompactness,
+              height: 56 - 8 * guideCompactness,
+              marginBottom: 14 - 5 * guideCompactness,
             },
           ]}
           resizeMode="contain"
@@ -3279,25 +3355,35 @@ function HooGuidePopup({
           style={[
             hooStyles.guideTitle,
             {
-              fontSize: 23 - 2 * guideCompactness,
-              marginBottom: 18 - 8 * guideCompactness,
+              fontSize: 24 - 2 * guideCompactness,
+              marginBottom: 24 - 8 * guideCompactness,
             },
           ]}
           allowFontScaling={false}
         >
-          후우, 이렇게 해요
+          짧은 호흡으로 마음을 쉬게 해요
         </Text>
 
         <View style={hooStyles.guideSteps}>
           {HOO_GUIDE_STEPS.map((step, index) => (
             <View key={step.n}>
               {index > 0 && <View style={hooStyles.guideDivider} />}
-              <View style={[hooStyles.guideStepRow, { paddingVertical: 13 - 4 * guideCompactness }]}>
+              <View style={[hooStyles.guideStepRow, { paddingVertical: 15 - 4 * guideCompactness }]}>
                 <View style={hooStyles.guideStepNumber}>
-                  <Text style={hooStyles.guideStepNumberText} allowFontScaling={false}>{step.n}</Text>
+                  <Text
+                    style={hooStyles.guideStepNumberText}
+                    allowFontScaling={false}
+                  >
+                    {step.n}
+                  </Text>
                 </View>
                 <View style={hooStyles.guideStepTexts}>
-                  <Text style={hooStyles.guideStepTitle} allowFontScaling={false}>{step.title}</Text>
+                  <Text
+                    style={hooStyles.guideStepTitle}
+                    allowFontScaling={false}
+                  >
+                    {step.title}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -3314,18 +3400,18 @@ function HooGuidePopup({
             },
           ]}
         >
-          <Text style={hooStyles.guideNoteText} allowFontScaling={false}>🔊  소리를 켜면 더 좋아요</Text>
+          <Text style={hooStyles.guideNoteText} allowFontScaling={false}>마이크는 숨소리만 확인해요</Text>
         </View>
 
         <HooTactilePressable
           accessibilityRole="button"
-          accessibilityLabel="시작하기"
+          accessibilityLabel={primaryActionLabel}
           onPress={() => runExit(onStart)}
           pressedScale={0.98}
           style={[hooStyles.guideStartButton, { height: 56 - 4 * guideCompactness }]}
           pressOverlayStyle={hooStyles.guideStartButtonOverlay}
         >
-          <Text style={hooStyles.guideStartButtonText} allowFontScaling={false}>시작하기</Text>
+          <Text style={hooStyles.guideStartButtonText} allowFontScaling={false}>{primaryActionLabel}</Text>
         </HooTactilePressable>
       </Animated.View>
     </View>
@@ -3336,7 +3422,73 @@ type HooSessionCopySnapshot = {
   title: string;
   subtitle: string | null;
   titleStyle: 'countdown' | 'instruction' | 'guide';
+  breathPhase: HooBreathPhase;
 };
+
+type HooDissolveParticle = {
+  x: number;
+  y: number;
+  toX: number;
+  toY: number;
+  size: number;
+  opacity: number;
+};
+
+function HooDissolveParticles({
+  transition,
+  particles,
+  width,
+  height,
+}: {
+  transition: Animated.Value;
+  particles: readonly HooDissolveParticle[];
+  width: number;
+  height: number;
+}) {
+  return (
+    <View pointerEvents="none" style={hooStyles.dissolveParticlesLayer}>
+      {particles.map((particle, index) => (
+        <Animated.View
+          key={`hoo-dissolve-particle-${index}`}
+          style={[
+            hooStyles.dissolveParticle,
+            {
+              width: particle.size,
+              height: particle.size,
+              borderRadius: particle.size / 2,
+              left: (particle.x / 100) * width,
+              top: (particle.y / 100) * height,
+              opacity: transition.interpolate({
+                inputRange: [0, 0.18, 1],
+                outputRange: [0, particle.opacity, 0],
+              }),
+              transform: [
+                {
+                  translateX: transition.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, particle.toX],
+                  }),
+                },
+                {
+                  translateY: transition.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, particle.toY],
+                  }),
+                },
+                {
+                  scale: transition.interpolate({
+                    inputRange: [0, 0.65, 1],
+                    outputRange: [0.72, 1, 0.42],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
 
 function HooSessionStage({
   width,
@@ -3349,6 +3501,7 @@ function HooSessionStage({
   subtitle,
   phaseRemainingSeconds = null,
   breathPhase,
+  tapFallbackHint,
   shouldUseStaticBackground,
   showInhaleFlow,
   characterSource,
@@ -3367,7 +3520,8 @@ function HooSessionStage({
   footer,
   accessibilityLabel,
   onRequestMicPermission,
-  onBack,
+  onPressExhaleFallbackStart,
+  onPressExhaleFallbackEnd,
 }: {
   width: number;
   height: number;
@@ -3379,6 +3533,7 @@ function HooSessionStage({
   subtitle: string | null;
   phaseRemainingSeconds?: number | null;
   breathPhase: HooBreathPhase;
+  tapFallbackHint: string | null;
   shouldUseStaticBackground: boolean;
   showInhaleFlow: boolean;
   characterSource: ImageSourcePropType;
@@ -3397,7 +3552,8 @@ function HooSessionStage({
   footer?: ReactNode;
   accessibilityLabel?: string;
   onRequestMicPermission: () => void;
-  onBack: () => void;
+  onPressExhaleFallbackStart?: () => void;
+  onPressExhaleFallbackEnd?: () => void;
 }) {
   const sessionResponsiveLayout = {
     width,
@@ -3435,7 +3591,9 @@ function HooSessionStage({
   const wandEntrance = useRef(new Animated.Value(0)).current;
   const hasPlayedWandEntranceRef = useRef(false);
   const copyTransition = useRef(new Animated.Value(1)).current;
+  const copyDissolveTransition = useRef(new Animated.Value(0)).current;
   const phaseTimerTransition = useRef(new Animated.Value(phaseRemainingSeconds === null ? 0 : 1)).current;
+  const phaseTimerDissolveTransition = useRef(new Animated.Value(0)).current;
   const inhaleFlow = useRef(new Animated.Value(0)).current;
   const completionEntrance = useRef(new Animated.Value(characterMode === 'large' ? 0 : 1)).current;
   const captureEntrance = useRef(new Animated.Value(characterMode === 'capture' ? 1 : 0)).current;
@@ -3443,12 +3601,14 @@ function HooSessionStage({
   const characterFlightY = useRef(new Animated.Value(0)).current;
   const characterFlightTilt = useRef(new Animated.Value(0)).current;
   const characterFlightScale = useRef(new Animated.Value(1)).current;
-  const [displayedCopy, setDisplayedCopy] = useState<HooSessionCopySnapshot>({ title, subtitle, titleStyle });
+  const [displayedCopy, setDisplayedCopy] = useState<HooSessionCopySnapshot>({ title, subtitle, titleStyle, breathPhase });
   const [displayedPhaseRemainingSeconds, setDisplayedPhaseRemainingSeconds] = useState<number | null>(phaseRemainingSeconds);
   const [outgoingPhaseRemainingSeconds, setOutgoingPhaseRemainingSeconds] = useState<number | null>(null);
   const currentCopyRef = useRef<HooSessionCopySnapshot>(displayedCopy);
   const phaseTimerValueRef = useRef<number | null>(phaseRemainingSeconds);
   const phaseTimerToneStyle = breathPhase === 'inhale' ? hooStyles.phaseTimerTextInhale : hooStyles.phaseTimerTextExhale;
+  const displayedCopyToneStyle =
+    displayedCopy.breathPhase === 'inhale' ? hooStyles.sessionCopyToneInhale : hooStyles.sessionCopyToneExhale;
   const inhaleAirParticles = useMemo(
     () => [
       { id: 'left-high', left: 114, top: 472, toX: 68, toY: 34, size: 5, opacity: 0.22 },
@@ -3485,24 +3645,34 @@ function HooSessionStage({
   }, [playWandEntrance, wandEntrance]);
 
 	  useEffect(() => {
-	    const nextCopy = { title, subtitle, titleStyle };
+    const nextCopy = { title, subtitle, titleStyle, breathPhase };
 	    const currentCopy = currentCopyRef.current;
 	    if (
-	      currentCopy.title === nextCopy.title
+      currentCopy.title === nextCopy.title
       && currentCopy.subtitle === nextCopy.subtitle
       && currentCopy.titleStyle === nextCopy.titleStyle
+      && currentCopy.breathPhase === nextCopy.breathPhase
     ) {
       return;
-	    }
+    }
 	
 	    currentCopyRef.current = nextCopy;
 	    copyTransition.stopAnimation();
+      copyDissolveTransition.stopAnimation();
 	    const isCountdownCopyChange = currentCopy.titleStyle === 'countdown' && nextCopy.titleStyle === 'countdown';
       if (isCountdownCopyChange) {
         setDisplayedCopy(nextCopy);
         copyTransition.setValue(1);
         return;
       }
+
+      copyDissolveTransition.setValue(0);
+      Animated.timing(copyDissolveTransition, {
+        toValue: 1,
+        duration: Math.round(HOO_COPY_FADE_MS * 0.72),
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
 
 	    Animated.timing(copyTransition, {
 	      toValue: 0,
@@ -3521,7 +3691,7 @@ function HooSessionStage({
 	        }).start();
 	      }
     });
-  }, [copyTransition, subtitle, title, titleStyle]);
+  }, [breathPhase, copyDissolveTransition, copyTransition, subtitle, title, titleStyle]);
 
   useEffect(() => {
     if (phaseTimerValueRef.current === phaseRemainingSeconds) {
@@ -3531,9 +3701,17 @@ function HooSessionStage({
     const previousPhaseRemainingSeconds = phaseTimerValueRef.current;
     phaseTimerValueRef.current = phaseRemainingSeconds;
     phaseTimerTransition.stopAnimation();
+    phaseTimerDissolveTransition.stopAnimation();
     setOutgoingPhaseRemainingSeconds(previousPhaseRemainingSeconds);
     setDisplayedPhaseRemainingSeconds(phaseRemainingSeconds);
     phaseTimerTransition.setValue(0);
+    phaseTimerDissolveTransition.setValue(0);
+    Animated.timing(phaseTimerDissolveTransition, {
+      toValue: 1,
+      duration: Math.round(HOO_TIMER_FADE_MS * 0.92),
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
     Animated.timing(phaseTimerTransition, {
       toValue: 1,
       duration: HOO_TIMER_FADE_MS,
@@ -3546,7 +3724,7 @@ function HooSessionStage({
 
       setOutgoingPhaseRemainingSeconds(null);
     });
-  }, [phaseRemainingSeconds, phaseTimerTransition]);
+  }, [phaseRemainingSeconds, phaseTimerDissolveTransition, phaseTimerTransition]);
 
   useEffect(() => {
     if (!showInhaleFlow) {
@@ -3700,6 +3878,10 @@ function HooSessionStage({
   const hooCopyTransitionStyle = {
     opacity: copyTransition,
   };
+  const sessionCopyTop = (displayedCopy.titleStyle === 'countdown' ? y(190, height) : y(227, height)) - sessionElementLayout.copyLift;
+  const copyDissolveLayerWidth = displayedCopy.titleStyle === 'countdown' ? x(132, width) : x(286, width);
+  const copyDissolveLayerHeight = displayedCopy.titleStyle === 'countdown' ? y(112, height) : y(70, height);
+  const copyDissolveLayerTop = sessionCopyTop + (displayedCopy.titleStyle === 'countdown' ? y(-4, height) : y(-8, height));
   const hooPhaseTimerTransitionStyle = {
     opacity: phaseTimerTransition.interpolate({
       inputRange: [0, 0.12, 1],
@@ -3715,6 +3897,10 @@ function HooSessionStage({
       outputRange: [1, 0],
     }),
   };
+  const phaseTimerLeft = x(162, width);
+  const phaseTimerTop = y(257, height);
+  const phaseTimerWidth = x(66, width);
+  const phaseTimerHeight = y(42, height);
   const characterFlightStyle = isCharacterFlying
     ? {
         transform: [
@@ -3785,7 +3971,14 @@ function HooSessionStage({
   };
 
   return (
-    <View style={hooStyles.screen} accessible={Boolean(accessibilityLabel)} accessibilityLabel={accessibilityLabel}>
+    <Pressable
+      style={hooStyles.screen}
+      accessible={Boolean(accessibilityLabel)}
+      accessibilityLabel={accessibilityLabel}
+      onPressIn={onPressExhaleFallbackStart}
+      onPressOut={onPressExhaleFallbackEnd}
+      disabled={!onPressExhaleFallbackStart}
+    >
       {shouldUseStaticBackground ? (
         <Image
           source={hooSessionBackgroundPoster}
@@ -3807,33 +4000,6 @@ function HooSessionStage({
       )}
       <View pointerEvents="none" style={hooStyles.sessionSurfaceWash} />
       <View style={[hooStyles.hooHeader, { left: x(17, width), right: x(26, width), top: y(34, height) }]}>
-        <HooTactilePressable
-          accessibilityRole="button"
-          accessibilityLabel="뒤로가기"
-          onPress={onBack}
-          pressedScale={0.9}
-          style={hooStyles.backButton}
-        >
-          <View style={hooStyles.backButtonFrame}>
-            <Image
-              source={hooBackChevron}
-              style={[
-                hooStyles.backChevronImage,
-                {
-                  width: s(11, width),
-                  height: y(20, height),
-                  transform: [{ translateX: x(-6, width) }],
-                },
-              ]}
-              resizeMode="stretch"
-            />
-          </View>
-        </HooTactilePressable>
-        <Image
-          source={hooLogoHeaderNode}
-          style={[hooStyles.headerLogoNode, { width: s(80, width), height: y(36, height) }]}
-          resizeMode="stretch"
-        />
         <View style={hooStyles.headerCounter} accessibilityLabel={`${visualBreathIndex} / ${HOO_TOTAL_BREATHS}`}>
           <Text
             key={`hoo-header-counter-${visualBreathIndex}`}
@@ -4044,7 +4210,7 @@ function HooSessionStage({
           hooCompletionEntranceStyle,
           // 폰트 크기/위치는 표시 중인 글자(displayedCopy)와 같은 스냅샷의 titleStyle을 따라간다.
           // (prop titleStyle을 쓰면 전환 중 옛 글자가 새 스타일(초대형 카운트다운)로 렌더돼 화면을 덮음)
-          { top: (displayedCopy.titleStyle === 'countdown' ? y(190, height) : y(227, height)) - sessionElementLayout.copyLift },
+          { top: sessionCopyTop },
         ]}
       >
         <Text
@@ -4057,11 +4223,12 @@ function HooSessionStage({
             displayedCopy.titleStyle === 'countdown'
               ? { fontSize: s(80, width), lineHeight: s(99, width) }
               : displayedCopy.titleStyle === 'guide'
-              ? { fontSize: s(20, width), lineHeight: s(27, width) }
+              ? { fontSize: s(19, width), lineHeight: s(25, width) }
               : { fontSize: s(24, width), lineHeight: s(29, width) },
+            displayedCopy.titleStyle === 'guide' ? displayedCopyToneStyle : null,
           ]}
           allowFontScaling={false}
-          numberOfLines={displayedCopy.titleStyle === 'guide' ? 1 : undefined}
+          numberOfLines={displayedCopy.titleStyle === 'guide' ? 2 : undefined}
           adjustsFontSizeToFit={displayedCopy.titleStyle === 'guide'}
         >
           {displayedCopy.title}
@@ -4075,6 +4242,53 @@ function HooSessionStage({
           </Text>
         ) : null}
       </Animated.View>
+
+      {characterMode !== 'large' ? (
+        <View
+          pointerEvents="none"
+          style={[
+            hooStyles.copyDissolveLayer,
+            {
+              left: (width - copyDissolveLayerWidth) / 2,
+              top: copyDissolveLayerTop,
+              width: copyDissolveLayerWidth,
+              height: copyDissolveLayerHeight,
+            },
+          ]}
+        >
+          <HooDissolveParticles
+            transition={copyDissolveTransition}
+            particles={HOO_COPY_DISSOLVE_PARTICLES}
+            width={copyDissolveLayerWidth}
+            height={copyDissolveLayerHeight}
+          />
+        </View>
+      ) : null}
+
+      {tapFallbackHint ? (
+        <View
+          pointerEvents="none"
+          style={[
+            hooStyles.tapFallbackHint,
+            {
+              left: x(52, width),
+              right: x(52, width),
+              top: y(316, height) - sessionElementLayout.copyLift,
+              paddingHorizontal: x(14, width),
+              paddingVertical: y(7, height),
+            },
+          ]}
+        >
+          <Text
+            style={[hooStyles.tapFallbackHintText, { fontSize: s(12, width), lineHeight: s(17, width) }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            allowFontScaling={false}
+          >
+            {tapFallbackHint}
+          </Text>
+        </View>
+      ) : null}
 
       {characterMode === 'large' && encouragement ? (
         <Animated.View
@@ -4105,14 +4319,20 @@ function HooSessionStage({
             hooStyles.phaseTimerSubtitleSlot,
             hooPhaseTimerTransitionStyle,
             {
-              left: x(162, width),
-              top: y(257, height),
-              width: x(66, width),
-              height: y(42, height),
+              left: phaseTimerLeft,
+              top: phaseTimerTop,
+              width: phaseTimerWidth,
+              height: phaseTimerHeight,
             },
           ]}
           accessibilityLabel={`${displayedPhaseRemainingSeconds ?? outgoingPhaseRemainingSeconds}초 남음`}
         >
+          <HooDissolveParticles
+            transition={phaseTimerDissolveTransition}
+            particles={HOO_TIMER_DISSOLVE_PARTICLES}
+            width={phaseTimerWidth}
+            height={phaseTimerHeight}
+          />
           {outgoingPhaseRemainingSeconds !== null && (
             <Animated.Text
               style={[
@@ -4240,7 +4460,7 @@ function HooSessionStage({
       ) : (
         footer
       )}
-    </View>
+    </Pressable>
   );
 }
 
@@ -6920,41 +7140,16 @@ const hooStyles = StyleSheet.create({
   tactilePressOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
-  guideOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 50,
+  guideScreen: {
+    flex: 1,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  guideBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(18,40,54,0.34)',
-  },
-  guideCard: {
-    backgroundColor: 'rgba(255,255,255,0.98)',
-    borderRadius: 26,
-    paddingTop: 34,
-    paddingBottom: 22,
     paddingHorizontal: 22,
+  },
+  guideScreenContent: {
     alignItems: 'center',
-    shadowColor: '#1b3a49',
-    shadowOpacity: 0.22,
-    shadowRadius: 30,
-    shadowOffset: { width: 0, height: 12 },
-  },
-  guideClose: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    zIndex: 2,
-  },
-  guideCloseText: {
-    color: '#9bb0ba',
-    fontSize: 17,
-    fontWeight: '600',
+    justifyContent: 'center',
   },
   guideBubbleIcon: {
     width: 52,
@@ -6962,24 +7157,24 @@ const hooStyles = StyleSheet.create({
     marginBottom: 10,
   },
   guideTitle: {
-    color: '#2b4d5c',
+    color: '#191F28',
     fontSize: 23,
     fontWeight: '800',
-    marginBottom: 18,
-  },
-  guideSubtitle: {
-    color: '#86a0ac',
-    fontSize: 13,
-    fontWeight: '500',
-    marginTop: 6,
-    marginBottom: 16,
+    marginBottom: 8,
+    maxWidth: 286,
+    textAlign: 'center',
+    lineHeight: 30,
   },
   guideSteps: {
     alignSelf: 'stretch',
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    paddingHorizontal: 18,
   },
   guideDivider: {
     height: 1,
-    backgroundColor: 'rgba(45,77,92,0.08)',
+    backgroundColor: 'rgba(139,149,161,0.16)',
+    marginLeft: 46,
   },
   guideStepRow: {
     flexDirection: 'row',
@@ -6987,30 +7182,31 @@ const hooStyles = StyleSheet.create({
     paddingVertical: 13,
   },
   guideStepNumber: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#EAF3FC',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EEF6FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
   },
   guideStepNumberText: {
-    color: '#4292F2',
-    fontSize: 16,
+    color: '#191F28',
+    fontSize: 15,
     fontWeight: '800',
   },
   guideStepTexts: {
     flex: 1,
   },
   guideStepTitle: {
-    color: '#2b4d5c',
-    fontSize: 16,
-    fontWeight: '700',
+    color: '#191F28',
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 21,
   },
   guideNote: {
     alignSelf: 'stretch',
-    backgroundColor: '#F1F6F9',
+    backgroundColor: 'rgba(255,255,255,0.58)',
     borderRadius: 14,
     paddingVertical: 12,
     alignItems: 'center',
@@ -7018,20 +7214,18 @@ const hooStyles = StyleSheet.create({
     marginBottom: 16,
   },
   guideNoteText: {
-    color: '#5d7c8a',
-    fontSize: 13,
+    color: '#6B7684',
+    fontSize: 12,
     fontWeight: '600',
+    lineHeight: 17,
+    textAlign: 'center',
   },
   guideStartButton: {
     alignSelf: 'stretch',
     height: 56,
     borderRadius: 18,
-    backgroundColor: '#4292F2',
+    backgroundColor: '#3182F6',
     overflow: 'hidden',
-    shadowColor: '#2F85EA',
-    shadowOpacity: 0.32,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
   },
   guideStartButtonOverlay: {
     backgroundColor: 'rgba(0,0,0,0.08)',
@@ -7135,28 +7329,6 @@ const hooStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  backButton: {
-    width: 20,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backButtonFrame: {
-    width: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backButtonMark: {
-    width: 14.1214,
-    height: 14.1214,
-    borderLeftWidth: 3,
-    borderBottomWidth: 3,
-    borderColor: '#FFFFFF',
-    transform: [{ translateX: -2 }, { translateY: -1 }, { rotate: '45deg' }],
-  },
-  backChevronImage: {},
-  headerLogoNode: {},
   headerCounter: {
     marginLeft: 'auto',
     width: 69,
@@ -7228,10 +7400,10 @@ const hooStyles = StyleSheet.create({
     letterSpacing: 0,
   },
   phaseTimerTextInhale: {
-    color: '#6EAFC6',
+    color: '#6FA6BE',
   },
   phaseTimerTextExhale: {
-    color: '#2F86C7',
+    color: '#246A96',
   },
   phaseTimerTextLayer: {
     position: 'absolute',
@@ -7267,6 +7439,39 @@ const hooStyles = StyleSheet.create({
     color: '#396073',
     fontWeight: '700',
     textAlign: 'center',
+  },
+  sessionCopyToneInhale: {
+    color: '#628DA2',
+  },
+  sessionCopyToneExhale: {
+    color: '#254F68',
+  },
+  tapFallbackHint: {
+    position: 'absolute',
+    zIndex: 11,
+    alignItems: 'center',
+    alignSelf: 'center',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.36)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.44)',
+  },
+  tapFallbackHintText: {
+    color: 'rgba(57, 96, 115, 0.72)',
+    fontWeight: '600',
+    textAlign: 'center',
+    letterSpacing: 0,
+  },
+  copyDissolveLayer: {
+    position: 'absolute',
+    zIndex: 11,
+  },
+  dissolveParticlesLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  dissolveParticle: {
+    position: 'absolute',
+    backgroundColor: 'rgba(57, 96, 115, 0.58)',
   },
   encouragementWrap: {
     position: 'absolute',

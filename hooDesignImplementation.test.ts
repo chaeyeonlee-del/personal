@@ -19,6 +19,14 @@ test('hoo production UI does not render full Figma frame screenshots as app scre
   equal(appSource.includes('hoo-frame-'), false);
 });
 
+test('hoo web builds only show the phone mockup when the preview flag is enabled', () => {
+  const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
+
+  equal(appSource.includes("const shouldUseWebMockup = process.env.EXPO_PUBLIC_HOO_WEB_MOCKUP === 'true';"), true);
+  equal(appSource.includes("const isFramed = Platform.OS === 'web' ? true : layout.isFramed;"), false);
+  equal(appSource.includes('const isWebMockup = shouldUseWebMockup && isFramed;'), true);
+});
+
 test('hoo interactions keep screen transitions quiet and use local bubble audio', () => {
   const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
 
@@ -111,9 +119,12 @@ test('hoo onboarding shows the full-screen onboarding image immediately', () => 
   const hooAppSource = appSource.slice(appSource.indexOf('function HooApp('), appSource.indexOf('// 화면이 마운트될 때'));
 
   equal(appSource.includes('const HOO_ONBOARDING_AUTO_ADVANCE_MS = 2000;'), true);
-  equal(appSource.includes('const HOO_ONBOARDING_FADE_OUT_MS = 520;'), true);
+  equal(appSource.includes('const HOO_ONBOARDING_EXIT_MS = 360;'), true);
+  equal(appSource.includes('HOO_ONBOARDING_FADE_OUT_MS'), false);
   equal(appSource.includes('function HooAutoAdvanceOnboardingSplash'), true);
   equal(appSource.includes('setTimeout(startExit, HOO_ONBOARDING_AUTO_ADVANCE_MS);'), true);
+  equal(appSource.includes('toValue: 1,\n      duration: HOO_ONBOARDING_EXIT_MS,'), true);
+  equal(appSource.includes('outputRange: [1, 0.988]'), true);
   equal(appSource.includes("const hooOnboardingImage = require('./assets/5.ui element/hoo-onboarding.png');"), true);
   equal(appSource.includes('hoo-splash-intro.mp4'), false);
   equal(appSource.includes('onboarding-splash-open.mp4'), false);
@@ -121,6 +132,8 @@ test('hoo onboarding shows the full-screen onboarding image immediately', () => 
   equal(hooAppSource.includes("flowState.screen === 'onboarding'"), true);
   equal(hooAppSource.includes('accessibilityLabel="후우 시작하기"'), true);
   equal(hooAppSource.includes('<HooAutoAdvanceOnboardingSplash onStart={beginSession} />'), true);
+  equal(hooAppSource.includes('{isGuideScreen && (\n          <HooGuideScreen'), true);
+  equal(hooAppSource.includes('{isGuideScreen && (\n          <HooScreenFade>'), false);
   equal(hooAppSource.includes('hooIntroSplashPhase'), false);
   equal(hooAppSource.includes('completeHooIntroSplash'), false);
   equal(hooAppSource.includes('splashOverlayLayer'), false);
@@ -171,6 +184,19 @@ test('hoo breathing stage renders a visible phase countdown and wand entrance', 
   equal(appSource.includes('hooCounter1'), false);
   equal(appSource.includes('headerCounterImageFrame'), false);
   equal(appSource.includes('headerCounterTextOverlay'), false);
+});
+
+test('hoo session header starts without the back button or hoo logo', () => {
+  const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
+  const sessionHeaderSource = appSource.slice(
+    appSource.indexOf('<View style={[hooStyles.hooHeader'),
+    appSource.indexOf('{showProgress && ('),
+  );
+
+  equal(sessionHeaderSource.includes('accessibilityLabel="뒤로가기"'), false);
+  equal(sessionHeaderSource.includes('source={hooBackChevron}'), false);
+  equal(sessionHeaderSource.includes('source={hooLogoHeaderNode}'), false);
+  equal(sessionHeaderSource.includes('{visualBreathIndex} / {HOO_TOTAL_BREATHS}'), true);
 });
 
 test('hoo session uses the generated background video with the watermark cropped away', () => {
@@ -257,6 +283,13 @@ test('hoo breathing copy and completion enter with native text fades', () => {
   equal(appSource.includes('sessionSubtitleGradient'), false);
   equal(appSource.includes('HOO_COPY_FADE_MS'), true);
   equal(appSource.includes('HOO_TIMER_FADE_MS'), true);
+  equal(appSource.includes('HOO_COPY_DISSOLVE_PARTICLES'), true);
+  equal(appSource.includes('HOO_TIMER_DISSOLVE_PARTICLES'), true);
+  equal(appSource.includes('function HooDissolveParticles'), true);
+  equal(appSource.includes('copyDissolveTransition'), true);
+  equal(appSource.includes('phaseTimerDissolveTransition'), true);
+  equal(appSource.includes('hooStyles.copyDissolveLayer'), true);
+  equal(appSource.includes('hooStyles.dissolveParticle'), true);
   equal(appSource.includes('HOO_COMPLETION_FADE_MS'), true);
   equal(appSource.includes('phaseTimerTransition'), true);
   equal(appSource.includes('displayedPhaseRemainingSeconds'), true);
@@ -518,7 +551,7 @@ test('hoo final capture failure shows a failed session instead of completing', (
 test('hoo prepare countdown swaps numbers without fading so 2 remains visible', () => {
   const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
   const copyEffectSource = appSource.slice(
-    appSource.indexOf('const nextCopy = { title, subtitle, titleStyle };'),
+    appSource.indexOf('const nextCopy = { title, subtitle, titleStyle, breathPhase };'),
     appSource.indexOf('useEffect(() => {', appSource.indexOf('phaseTimerValueRef.current')),
   );
 
@@ -633,15 +666,20 @@ test('hoo creates exhale bubbles from live microphone volume updates and held ex
   equal(appSource.includes('lastBubbleBurstAtRef'), false);
   equal(appSource.includes('createHooBubble({'), false);
   equal(appSource.includes('getHooBubbleBurstCount({'), false);
-  equal(micLevelHandlerSource.includes('volumeLevelRef.current = nextVolumeLevel;'), true);
-  equal(micLevelHandlerSource.includes('setVolumeLevel(nextVolumeLevel);'), true);
-  equal(micLevelHandlerSource.includes('nextVolumeLevel >= HOO_EXHALE_DETECTION_VOLUME_THRESHOLD'), true);
+  equal(micLevelHandlerSource.includes('const effectiveVolumeLevel = isPressExhaleFallbackActiveRef.current'), true);
+  equal(micLevelHandlerSource.includes('? Math.max(nextVolumeLevel, HOO_PRESS_EXHALE_FALLBACK_VOLUME_LEVEL)'), true);
+  equal(micLevelHandlerSource.includes('volumeLevelRef.current = effectiveVolumeLevel;'), true);
+  equal(micLevelHandlerSource.includes('setVolumeLevel(effectiveVolumeLevel);'), true);
+  equal(micLevelHandlerSource.includes('effectiveVolumeLevel >= HOO_EXHALE_DETECTION_VOLUME_THRESHOLD'), true);
   equal(micLevelHandlerSource.includes('lastDetectedExhaleAtRef.current = Date.now();'), true);
-  equal(micLevelHandlerSource.includes('heldExhaleVolumeRef.current = nextVolumeLevel;'), true);
+  equal(micLevelHandlerSource.includes('heldExhaleVolumeRef.current = effectiveVolumeLevel;'), true);
   equal(micLevelHandlerSource.includes('emitHooBubblesFromVolume(nextVolumeLevel);'), false);
   equal(exhaleIntervalSource.includes('setInterval(() => {'), true);
+  equal(exhaleIntervalSource.includes('const pressFallbackVolumeLevel = isPressExhaleFallbackActiveRef.current'), true);
+  equal(exhaleIntervalSource.includes('? Math.max(volumeLevelRef.current, HOO_PRESS_EXHALE_FALLBACK_VOLUME_LEVEL)'), true);
+  equal(exhaleIntervalSource.includes('heldExhaleVolumeRef.current = pressFallbackVolumeLevel;'), true);
   equal(exhaleIntervalSource.includes('const canUseHeldExhaleVolume = Date.now() - lastDetectedExhaleAtRef.current <= HOO_EXHALE_VOLUME_HOLD_MS;'), true);
-  equal(exhaleIntervalSource.includes('emitHooBubblesFromVolume(canUseHeldExhaleVolume ? heldExhaleVolumeRef.current : volumeLevelRef.current);'), true);
+  equal(exhaleIntervalSource.includes('emitHooBubblesFromVolume(pressFallbackVolumeLevel ?? (canUseHeldExhaleVolume ? heldExhaleVolumeRef.current : volumeLevelRef.current));'), true);
   equal(exhaleIntervalSource.includes('emitHooBubblesFromVolume(volumeLevelRef.current, true);'), false);
   equal(appSource.includes('fallbackVolumeLevel:'), false);
   equal(exhaleIntervalSource.includes('HOO_EXHALE_BUBBLE_BURST_INTERVAL_MS'), true);
@@ -690,7 +728,9 @@ test('hoo first exhale guides users with gentle live feedback only once', () => 
     ),
   );
 
-  equal(appSource.includes("import { HOO_FIRST_EXHALE_DETECTION_THRESHOLD, getHooFirstExhaleGuideCopy } from './hooFirstExhaleGuide';"), true);
+  equal(appSource.includes('HOO_FIRST_EXHALE_DETECTION_THRESHOLD,'), true);
+  equal(appSource.includes('HOO_FIRST_EXHALE_HINT_DELAY_MS,'), true);
+  equal(appSource.includes('getHooFirstExhaleGuideCopy,'), true);
   equal(appSource.includes('const [firstExhaleGuideElapsedMs, setFirstExhaleGuideElapsedMs] = useState(0);'), true);
   equal(appSource.includes('const [hasDetectedFirstExhale, setHasDetectedFirstExhale] = useState(false);'), true);
   equal(appSource.includes('const firstExhaleGuideCopy = getHooFirstExhaleGuideCopy({'), true);
@@ -698,7 +738,7 @@ test('hoo first exhale guides users with gentle live feedback only once', () => 
   equal(appSource.includes('hasDetectedBreath: hasDetectedFirstExhale,'), true);
   equal(appSource.includes('onFirstExhaleBubbleDetected: () => setHasDetectedFirstExhale(true),'), true);
   equal(firstExhaleSource.includes('onFirstExhaleBubbleDetectedRef.current?.();'), true);
-  equal(firstExhaleSource.includes('if (shouldGuideFirstExhale && nextVolumeLevel >= HOO_FIRST_EXHALE_DETECTION_THRESHOLD) {'), true);
+  equal(firstExhaleSource.includes('if (shouldGuideFirstExhale && effectiveVolumeLevel >= HOO_FIRST_EXHALE_DETECTION_THRESHOLD) {'), true);
   equal(firstExhaleSource.includes('setHasDetectedFirstExhale(true);'), true);
   equal(appSource.includes("setInterval(() => {\n      setFirstExhaleGuideElapsedMs((elapsedMs) => elapsedMs + 100);"), true);
   // 안내 문구는 서브타이틀이 아니라 제목 한 줄로 합쳐진다(카운트다운 숫자와 겹치지 않게).
@@ -712,22 +752,128 @@ test('hoo first exhale guides users with gentle live feedback only once', () => 
   equal(appSource.includes('소리가 작아요'), false);
 });
 
-test('hoo guide keeps the three breathing steps as single-line instructions', () => {
+test('hoo lets users press and hold during exhale when mic input is unreliable', () => {
+  const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
+  const pressFallbackStartSource = appSource.slice(
+    appSource.indexOf('const handleHooPressExhaleFallbackStart = useCallback'),
+    appSource.indexOf('const handleHooPressExhaleFallbackEnd = useCallback', appSource.indexOf('const handleHooPressExhaleFallbackStart = useCallback')),
+  );
+  const pressFallbackEndSource = appSource.slice(
+    appSource.indexOf('const handleHooPressExhaleFallbackEnd = useCallback'),
+    appSource.indexOf('useHooMicrophoneLevel({', appSource.indexOf('const handleHooPressExhaleFallbackEnd = useCallback')),
+  );
+
+  equal(appSource.includes('const HOO_PRESS_EXHALE_FALLBACK_VOLUME_LEVEL = 0.42;'), true);
+  equal(appSource.includes('const isPressExhaleFallbackActiveRef = useRef(false);'), true);
+  equal(appSource.includes('onPressExhaleFallbackStart={shouldListenToMic ? handleHooPressExhaleFallbackStart : undefined}'), true);
+  equal(appSource.includes('onPressExhaleFallbackEnd={shouldListenToMic ? handleHooPressExhaleFallbackEnd : undefined}'), true);
+  equal(appSource.includes('onPressIn={onPressExhaleFallbackStart}'), true);
+  equal(appSource.includes('onPressOut={onPressExhaleFallbackEnd}'), true);
+  equal(appSource.includes('onPress={onTapExhaleFallback}'), false);
+  equal(pressFallbackStartSource.includes('if (!hooBubbleContextRef.current.shouldListenToMic) {'), true);
+  equal(pressFallbackStartSource.includes('isPressExhaleFallbackActiveRef.current = true;'), true);
+  equal(pressFallbackStartSource.includes('const fallbackVolumeLevel = Math.max(volumeLevelRef.current, HOO_PRESS_EXHALE_FALLBACK_VOLUME_LEVEL);'), true);
+  equal(pressFallbackStartSource.includes('lastDetectedExhaleAtRef.current = Date.now();'), true);
+  equal(pressFallbackStartSource.includes('heldExhaleVolumeRef.current = fallbackVolumeLevel;'), true);
+  equal(pressFallbackStartSource.includes('emitHooBubblesFromVolume(fallbackVolumeLevel);'), true);
+  equal(pressFallbackStartSource.includes('setHasDetectedFirstExhale(true);'), true);
+  equal(appSource.includes('const effectiveVolumeLevel = isPressExhaleFallbackActiveRef.current'), true);
+  equal(appSource.includes('const pressFallbackVolumeLevel = isPressExhaleFallbackActiveRef.current'), true);
+  equal(pressFallbackEndSource.includes('isPressExhaleFallbackActiveRef.current = false;'), true);
+  equal(pressFallbackEndSource.includes('volumeLevelRef.current = 0;'), true);
+  equal(pressFallbackEndSource.includes('setVolumeLevel(0);'), true);
+  equal(pressFallbackEndSource.includes('lastDetectedExhaleAtRef.current = 0;'), true);
+  equal(pressFallbackEndSource.includes('heldExhaleVolumeRef.current = 0;'), true);
+  equal(appSource.includes("const micEnvironmentFallbackHint ="), true);
+  equal(appSource.includes('에어팟·소음 환경이면 화면을 꾸욱 눌러도 돼요'), true);
+  equal(appSource.includes('에어팟·소음 환경이면 화면을 톡 눌러도 돼요'), false);
+  equal(appSource.includes('에어팟·소음 환경에서는 숨이 약하게 잡힐 수 있어요\\n화면을 톡 눌러도 돼요'), false);
+  equal(appSource.includes('tapFallbackHint={micEnvironmentFallbackHint}'), true);
+  equal(appSource.includes('hooStyles.tapFallbackHint'), true);
+  equal(appSource.includes("numberOfLines={1}"), true);
+  equal(appSource.includes('잘 안될 수 있다'), false);
+  equal(appSource.includes('잘 안 될 수 있어요'), false);
+  equal(appSource.includes('탭으로 대체'), false);
+  equal(appSource.includes('실패했어요'), false);
+  equal(appSource.includes("numberOfLines={displayedCopy.titleStyle === 'guide' ? 2 : undefined}"), true);
+});
+
+test('hoo varies the breathing guide copy across the five breaths', () => {
+  const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
+  const guideCopySource = appSource.slice(
+    appSource.indexOf('const HOO_BREATH_GUIDE_COPY_BY_INDEX = ['),
+    appSource.indexOf('function getHooBreathGuideCopy', appSource.indexOf('const HOO_BREATH_GUIDE_COPY_BY_INDEX = [')),
+  );
+
+  equal(appSource.includes('const HOO_BREATH_GUIDE_COPY_BY_INDEX = ['), true);
+  equal(guideCopySource.includes("inhale: '천천히 숨을 들이쉬어요'"), true);
+  equal(guideCopySource.includes("exhale: '후-우, 길게 내쉬어요'"), true);
+  equal(guideCopySource.includes("inhale: '조금 더 깊게 들이쉬어요'"), true);
+  equal(guideCopySource.includes("exhale: '입으로 부드럽게 내쉬어요'"), true);
+  equal(guideCopySource.includes("inhale: '어깨 힘을 살짝 풀어요'"), true);
+  equal(guideCopySource.includes("exhale: '천천히 끝까지 내쉬어요'"), true);
+  equal(guideCopySource.includes("inhale: '한 번 더 편하게 들이쉬어요'"), true);
+  equal(guideCopySource.includes("exhale: '숨이 길게 빠져나가게 해요'"), true);
+  equal(guideCopySource.includes("inhale: '천천히 숨을 깊게 들이쉬어요'"), true);
+  equal(guideCopySource.includes("exhale: '마지막으로 길게 후-우'"), true);
+  equal(appSource.includes('숨을 모아요'), false);
+  equal(appSource.includes('const breathSequenceGuideCopy = getHooBreathGuideCopy(flowState.breathIndex, flowState.breathPhase);'), true);
+  equal(appSource.includes('firstExhaleGuideCopy ?? finalBreathGuideCopy ?? breathSequenceGuideCopy'), true);
+  equal(appSource.includes('micEnvironmentFallbackHint ?? firstExhaleGuideCopy'), false);
+  equal(appSource.includes('breathingGuideCopy ?? currentCopy.title'), true);
+});
+
+test('hoo breathing copy and phase timer distinguish inhale from exhale tone', () => {
+  const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
+
+  equal(appSource.includes('phaseTimerTextInhale'), true);
+  equal(appSource.includes('phaseTimerTextExhale'), true);
+  equal(appSource.includes("color: '#6FA6BE'"), true);
+  equal(appSource.includes("color: '#246A96'"), true);
+  equal(appSource.includes('sessionCopyToneInhale'), true);
+  equal(appSource.includes('sessionCopyToneExhale'), true);
+  equal(appSource.includes("color: '#628DA2'"), true);
+  equal(appSource.includes("color: '#254F68'"), true);
+  equal(appSource.includes("displayedCopy.breathPhase === 'inhale' ? hooStyles.sessionCopyToneInhale : hooStyles.sessionCopyToneExhale"), true);
+  equal(appSource.includes("displayedCopy.titleStyle === 'guide' ? displayedCopyToneStyle : null"), true);
+});
+
+test('hoo guide keeps the breathing instructions short and separates mic permission from starting', () => {
   const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
   const guideStepsSource = appSource.slice(
     appSource.indexOf('const HOO_GUIDE_STEPS = ['),
     appSource.indexOf('];', appSource.indexOf('const HOO_GUIDE_STEPS = [')),
   );
 
-  equal(appSource.includes("title: '천천히 숨 들이마시기'"), true);
-  equal(appSource.includes("title: '마이크에 후-우 불기'"), true);
-  equal(appSource.includes("title: '마지막엔 큰 방울 만들기'"), true);
-  equal(guideStepsSource.includes('sub:'), false);
-  equal(appSource.includes('guideStepSub'), false);
-  equal(appSource.includes("sub: '코로 편하게 숨을 들이마셔요'"), false);
-  equal(appSource.includes("sub: '마이크를 향해 길게 불어주세요'"), false);
-  equal(appSource.includes("sub: '캐릭터가 비눗방울 안에 들어와요'"), false);
-  equal(appSource.includes("sub: '방울이 될 숨을 모아요'"), false);
+  equal(appSource.includes('짧은 호흡으로 마음을 쉬게 해요'), true);
+  equal(appSource.includes('천천히 숨 쉬며 비눗방울을 키워요'), false);
+  equal(appSource.includes('숨을 고르며 비눗방울을 키워요'), false);
+  equal(appSource.includes('후- 불면 비눗방울이 자라나요'), false);
+  equal(appSource.includes("title: '숫자에 맞춰 숨을 천천히 들이마셔요'"), true);
+  equal(appSource.includes("title: '후- 하고 내쉬면 비눗방울이 생겨요'"), true);
+  equal(appSource.includes("title: '마지막에는 비눗방울로 캐릭터를 잡아요'"), true);
+  equal(appSource.includes('guideStepNumberInhale'), false);
+  equal(appSource.includes('guideStepNumberExhale'), false);
+  equal(appSource.includes('guideStepTitleInhale'), false);
+  equal(appSource.includes('guideStepTitleExhale'), false);
+  equal(appSource.includes("step.tone === 'exhale'"), false);
+  equal(appSource.includes("guideStepNumberText: {\n    color: '#191F28'"), true);
+  equal(appSource.includes("guideStepTitle: {\n    color: '#191F28'"), true);
+  equal(appSource.includes('마이크는 숨소리만 확인해요'), true);
+  equal(appSource.includes('녹음 없이 숨 세기만 확인해요'), false);
+  equal(appSource.includes("const primaryActionLabel = requiresMicPermission ? '마이크 허용하기' : '시작하기';"), true);
+  equal(appSource.includes('requiresMicPermission={!isMicReady && !hasOpenedMicGate}'), true);
+  equal(appSource.includes('허용하면 바로 시작돼요'), false);
+  equal(appSource.includes('guideSummary'), false);
+  equal(appSource.includes('guideStartHint'), false);
+  equal(appSource.includes('마이크 허용하고 시작하기'), false);
+  equal(guideStepsSource.includes('description:'), false);
+  equal(appSource.includes('guideStepDescription'), false);
+  equal(appSource.includes('function HooGuideScreen('), true);
+  equal(appSource.includes('HooGuidePopup'), false);
+  equal(appSource.includes("const shouldRenderHooSessionStage = isHooSessionScreen && !isGuideScreen;"), true);
+  equal(appSource.includes('{shouldRenderHooSessionStage && ('), true);
+  equal(appSource.includes('{isGuideScreen && ('), true);
 });
 
 test('hoo guide start opens the mic gate before starting countdown', () => {
@@ -763,9 +909,9 @@ test('hoo guide start opens the mic gate before starting countdown', () => {
   equal(appSource.includes('const [isRequestingMicPermission, setIsRequestingMicPermission] = useState(false);'), true);
   equal(requestMicPermissionSource.includes('setIsRequestingMicPermission(true);'), true);
   equal(requestMicPermissionSource.includes('setIsRequestingMicPermission(false);'), true);
-  // 안내 팝업은 세션 시작마다 다시 보이도록 시작 시 리셋한다(영구 저장 X).
+  // 안내 화면은 세션 시작마다 다시 보이도록 시작 시 리셋한다(영구 저장 X).
   equal(appSource.includes('setGuideAcknowledged(false);'), true);
-  equal(appSource.includes("const isGuideOpen = flowState.screen === 'prepare' && !guideAcknowledged;"), true);
+  equal(appSource.includes("const isGuideScreen = flowState.screen === 'prepare' && !guideAcknowledged;"), true);
   // 무드 선택 화면을 제거하고 온보딩에서 바로 준비 화면으로 진입한다.
   equal(appSource.includes('beginHooSession(currentState)'), true);
   equal(appSource.includes("flowState.screen === 'mood'"), false);
@@ -774,9 +920,9 @@ test('hoo guide start opens the mic gate before starting countdown', () => {
   equal(appSource.includes('showMicPermissionPrompt'), true);
   equal(appSource.includes('micPermissionPill'), true);
   equal(appSource.includes('마이크 허용'), true);
-  // 가이드 또는 시스템 권한 팝업이 열려 있는 동안엔 앱 자체 마이크 안내를 띄우지 않는다.
+  // 가이드 화면 또는 시스템 권한 팝업이 열려 있는 동안엔 앱 자체 마이크 안내를 띄우지 않는다.
   equal(appSource.includes("const isMicPermissionRequestPending =\n    flowState.screen === 'prepare' && isRequestingMicPermission;"), true);
-  equal(appSource.includes("const needsMicPermission =\n    flowState.screen === 'prepare' && !isGuideOpen && !isRequestingMicPermission && !hasOpenedMicGate && !isMicReady;"), true);
+  equal(appSource.includes("const needsMicPermission =\n    flowState.screen === 'prepare' && !isGuideScreen && !isRequestingMicPermission && !hasOpenedMicGate && !isMicReady;"), true);
   equal(appSource.includes('&& !isRequestingMicPermission'), true);
   equal(appSource.includes("isMicPermissionRequestPending\n                ? ''"), true);
   equal(appSource.includes('showMicPermissionPrompt={needsMicPermission}'), true);
