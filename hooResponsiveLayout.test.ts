@@ -60,7 +60,8 @@ test('hoo completion character sits between the completion title and footer butt
   const characterSize = scaleSize(232, layout.width);
   const completion = getHooCompletionCharacterLayout({ layout, bubbleSize, characterSize });
   const titleBottom = scaleY(227, layout.height) + scaleSize(36, layout.width);
-  const footerTop = layout.height - scaleY(29, layout.height) - scaleY(56, layout.height);
+  const bottomInset = Math.max(30, scaleSize(38, layout.width));
+  const footerTop = layout.screenHeight - bottomInset - scaleY(56, layout.height);
   const idealTop = (titleBottom + footerTop) / 2 - bubbleSize / 2;
 
   equal(Math.round(completion.bubbleTop), Math.round(idealTop));
@@ -76,7 +77,8 @@ test('hoo completion character stays in the title to button gap on short devices
   const characterSize = scaleSize(232, layout.width);
   const completion = getHooCompletionCharacterLayout({ layout, bubbleSize, characterSize });
   const titleBottom = scaleY(227, layout.height) - elements.copyLift + scaleSize(36, layout.width);
-  const footerTop = layout.screenHeight - scaleY(29, layout.height) - scaleY(56, layout.height);
+  const bottomInset = Math.max(30, scaleSize(38, layout.width));
+  const footerTop = layout.screenHeight - bottomInset - scaleY(56, layout.height);
   const idealTop = (titleBottom + footerTop) / 2 - bubbleSize / 2;
 
   equal(Math.round(completion.bubbleTop), Math.round(idealTop));
@@ -84,13 +86,13 @@ test('hoo completion character stays in the title to button gap on short devices
   ok(completion.bubbleTop + bubbleSize < footerTop);
 });
 
-test('hoo completion buttons sit directly below the completion bubble', () => {
+test('hoo completion buttons use the same bottom inset on regular devices', () => {
   const layout = getHooResponsiveLayout({ screenWidth: 390, screenHeight: 844 });
   const bubbleSize = scaleSize(257, layout.width);
   const characterSize = scaleSize(232, layout.width);
   const buttonWidth = scaleSize(335, layout.width);
   const buttonHeight = scaleY(56, layout.height);
-  const completion = getHooCompletionCharacterLayout({ layout, bubbleSize, characterSize });
+  const bottomInset = Math.max(30, scaleSize(38, layout.width));
   const buttons = getHooCompletionButtonLayout({
     layout,
     bubbleSize,
@@ -99,17 +101,17 @@ test('hoo completion buttons sit directly below the completion bubble', () => {
     buttonHeight,
   });
 
-  ok(buttons.top > completion.bubbleTop + bubbleSize);
-  ok(buttons.top - (completion.bubbleTop + bubbleSize) <= scaleY(24, layout.height));
   equal(Math.round(buttons.left), Math.round((layout.width - buttonWidth) / 2));
+  equal(Math.round(layout.screenHeight - buttons.top - buttons.height), Math.round(bottomInset));
 });
 
-test('hoo completion buttons stay inside the visible short viewport', () => {
+test('hoo completion buttons use the same bottom inset on short devices', () => {
   const layout = getHooResponsiveLayout({ screenWidth: 430, screenHeight: 740 });
   const bubbleSize = scaleSize(257, layout.width);
   const characterSize = scaleSize(232, layout.width);
   const buttonWidth = scaleSize(335, layout.width);
   const buttonHeight = scaleY(56, layout.height);
+  const bottomInset = Math.max(30, scaleSize(38, layout.width));
   const buttons = getHooCompletionButtonLayout({
     layout,
     bubbleSize,
@@ -118,5 +120,5 @@ test('hoo completion buttons stay inside the visible short viewport', () => {
     buttonHeight,
   });
 
-  ok(buttons.top + buttons.height <= layout.screenHeight - scaleY(29, layout.height));
+  equal(Math.round(layout.screenHeight - buttons.top - buttons.height), Math.round(bottomInset));
 });

@@ -843,9 +843,21 @@ test('hoo breathing copy and phase timer distinguish inhale from exhale tone', (
   equal(layoutSource.includes('const sessionGuideCopyTop ='), true);
   equal(layoutSource.includes("displayedCopy.titleStyle === 'guide'"), true);
   equal(layoutSource.includes('const phaseTimerTop = displayedCopy.titleStyle ==='), true);
+  equal(layoutSource.includes('const guidePhaseTimerLift = 10;'), true);
+  equal(layoutSource.includes('sessionGuideCopyTop + y(75, height) - guidePhaseTimerLift'), true);
   equal(layoutSource.includes('const tapFallbackHintTop = phaseTimerTop + phaseTimerHeight +'), true);
   equal(appSource.includes('top: tapFallbackHintTop'), true);
   equal(appSource.includes('top: y(316, height) - sessionElementLayout.copyLift'), false);
+});
+
+test('hoo inhale phase triggers a gentle native vibration cadence', () => {
+  const appSource = readFileSync(join(import.meta.dirname, 'App.tsx'), 'utf8');
+
+  equal(appSource.includes('Vibration,'), true);
+  equal(appSource.includes('const HOO_INHALE_VIBRATION_PATTERN = [0, 28, 130];'), true);
+  equal(appSource.includes("flowState.screen !== 'breathing' || flowState.breathPhase !== 'inhale'"), true);
+  equal(appSource.includes('Vibration.vibrate(HOO_INHALE_VIBRATION_PATTERN, true);'), true);
+  equal(appSource.includes('Vibration.cancel();'), true);
 });
 
 test('hoo guide keeps the breathing instructions short and separates mic permission from starting', () => {

@@ -92,7 +92,8 @@ export function getHooCompletionCharacterLayout({
 }): HooCompletionCharacterLayout {
   const elements = getHooSessionElementLayout(layout);
   const titleBottom = scaleY(227, layout.height) - elements.copyLift + scaleSize(36, layout.width);
-  const footerTop = layout.screenHeight - scaleY(29, layout.height) - scaleY(56, layout.height);
+  const bottomInset = Math.max(30, scaleSize(38, layout.width));
+  const footerTop = layout.screenHeight - bottomInset - scaleY(56, layout.height);
   const idealBubbleTop = (titleBottom + footerTop) / 2 - bubbleSize / 2;
   const bubbleTop = clamp(
     idealBubbleTop,
@@ -121,11 +122,8 @@ export function getHooCompletionButtonLayout({
   buttonWidth: number;
   buttonHeight: number;
 }): HooCompletionButtonLayout {
-  const completion = getHooCompletionCharacterLayout({ layout, bubbleSize, characterSize });
-  const gapBelowBubble = scaleY(22, layout.height);
-  const bottomInset = scaleY(29, layout.height);
-  const maxTop = layout.screenHeight - bottomInset - buttonHeight;
-  const top = clamp(completion.bubbleTop + bubbleSize + gapBelowBubble, 0, maxTop);
+  const bottomInset = Math.max(30, scaleSize(38, layout.width));
+  const top = layout.screenHeight - bottomInset - buttonHeight;
 
   return {
     left: (layout.width - buttonWidth) / 2,

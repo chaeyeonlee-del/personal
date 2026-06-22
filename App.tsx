@@ -32,6 +32,7 @@ import {
   StyleSheet,
   Text,
   TextStyle,
+  Vibration,
   View,
   StyleProp,
   ViewStyle,
@@ -284,6 +285,7 @@ const HOO_COPY_FADE_MS = 760;
 const HOO_TIMER_FADE_MS = 520;
 const HOO_COMPLETION_FADE_MS = 720;
 const HOO_FINAL_CAPTURE_BLOW_MS = 1200;
+const HOO_INHALE_VIBRATION_PATTERN = [0, 28, 130];
 const HOO_BREATH_GUIDE_COPY_BY_INDEX = [
   { inhale: '천천히 숨을 들이쉬어요', exhale: '후-우, 길게 내쉬어요' },
   { inhale: '조금 더 깊게 들이쉬어요', exhale: '입으로 부드럽게 내쉬어요' },
@@ -2337,6 +2339,19 @@ function HooApp({
   }, [flowState.breathIndex, flowState.breathPhase, flowState.screen]);
 
   useEffect(() => {
+    if (Platform.OS === 'web' || flowState.screen !== 'breathing' || flowState.breathPhase !== 'inhale') {
+      Vibration.cancel();
+      return;
+    }
+
+    Vibration.vibrate(HOO_INHALE_VIBRATION_PATTERN, true);
+
+    return () => {
+      Vibration.cancel();
+    };
+  }, [flowState.breathIndex, flowState.breathPhase, flowState.screen]);
+
+  useEffect(() => {
     onFirstExhaleBubbleDetectedRef.current = shouldGuideFirstExhale
       ? firstExhaleGuideActions.onFirstExhaleBubbleDetected
       : null;
@@ -3905,11 +3920,12 @@ function HooSessionStage({
       outputRange: [1, 0],
     }),
   };
+  const guidePhaseTimerLift = 10;
   const phaseTimerLeft = x(162, width);
   const phaseTimerWidth = x(66, width);
   const phaseTimerHeight = y(42, height);
   const phaseTimerTop = displayedCopy.titleStyle === 'guide'
-    ? sessionGuideCopyTop + y(75, height)
+    ? sessionGuideCopyTop + y(75, height) - guidePhaseTimerLift
     : y(257, height) - sessionElementLayout.copyLift * 0.35;
   const tapFallbackHintTop = phaseTimerTop + phaseTimerHeight + y(8, height);
   const characterFlightStyle = isCharacterFlying
