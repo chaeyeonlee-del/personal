@@ -845,7 +845,8 @@ test('hoo guide keeps the breathing instructions short and separates mic permiss
     appSource.indexOf('];', appSource.indexOf('const HOO_GUIDE_STEPS = [')),
   );
 
-  equal(appSource.includes('짧은 호흡으로 마음을 쉬게 해요'), true);
+  equal(appSource.includes('짧은 호흡으로 마음을 쉬어가요'), true);
+  equal(appSource.includes('짧은 호흡으로 마음을 쉬게 해요'), false);
   equal(appSource.includes('천천히 숨 쉬며 비눗방울을 키워요'), false);
   equal(appSource.includes('숨을 고르며 비눗방울을 키워요'), false);
   equal(appSource.includes('후- 불면 비눗방울이 자라나요'), false);

@@ -3361,7 +3361,7 @@ function HooGuideScreen({
           ]}
           allowFontScaling={false}
         >
-          짧은 호흡으로 마음을 쉬게 해요
+          짧은 호흡으로 마음을 쉬어가요
         </Text>
 
         <View style={hooStyles.guideSteps}>
